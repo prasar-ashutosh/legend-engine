@@ -14,18 +14,24 @@
 
 package org.finos.legend.engine.language.pure.dsl.persistence.grammar.from;
 
+import org.antlr.v4.runtime.CharStream;
+import org.antlr.v4.runtime.misc.Interval;
 import org.eclipse.collections.api.factory.Lists;
 import org.eclipse.collections.impl.utility.ListIterate;
 import org.finos.legend.engine.language.pure.grammar.from.ParseTreeWalkerSourceInformation;
+import org.finos.legend.engine.language.pure.grammar.from.PureGrammarParserContext;
 import org.finos.legend.engine.language.pure.grammar.from.PureGrammarParserUtility;
 import org.finos.legend.engine.language.pure.grammar.from.antlr4.PersistenceParserGrammar;
 import org.finos.legend.engine.language.pure.grammar.from.connection.ConnectionParser;
+import org.finos.legend.engine.language.pure.grammar.from.data.embedded.HelperEmbeddedDataGrammarParser;
+import org.finos.legend.engine.language.pure.grammar.from.domain.DomainParser;
+import org.finos.legend.engine.language.pure.grammar.from.test.assertion.HelperTestAssertionGrammarParser;
 import org.finos.legend.engine.protocol.pure.v1.model.SourceInformation;
 import org.finos.legend.engine.protocol.pure.v1.model.context.EngineErrorType;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.PackageableElement;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.connection.Connection;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.connection.ConnectionPointer;
-import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.Persistence;
+import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.*;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.notifier.EmailNotifyee;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.notifier.Notifier;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.notifier.Notifyee;
@@ -64,6 +70,9 @@ import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persist
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.trigger.ManualTrigger;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.trigger.Trigger;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.section.ImportAwareCodeSection;
+import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.ParameterValue;
+import org.finos.legend.engine.protocol.pure.v1.model.test.assertion.TestAssertion;
+import org.finos.legend.engine.protocol.pure.v1.model.valueSpecification.ValueSpecification;
 import org.finos.legend.engine.shared.core.operational.errorManagement.EngineException;
 
 import java.util.Collections;
@@ -72,17 +81,21 @@ import java.util.function.Consumer;
 
 public class PersistenceParseTreeWalker
 {
+    private final CharStream input;
     private final ParseTreeWalkerSourceInformation walkerSourceInformation;
     private final Consumer<PackageableElement> elementConsumer;
     private final ImportAwareCodeSection section;
     private final ConnectionParser connectionParser;
+    private final PureGrammarParserContext context;
 
-    public PersistenceParseTreeWalker(ParseTreeWalkerSourceInformation walkerSourceInformation, Consumer<PackageableElement> elementConsumer, ImportAwareCodeSection section, ConnectionParser connectionParser)
+    public PersistenceParseTreeWalker(CharStream input, ParseTreeWalkerSourceInformation walkerSourceInformation, Consumer<PackageableElement> elementConsumer, ImportAwareCodeSection section, ConnectionParser connectionParser, PureGrammarParserContext context)
     {
+        this.input = input;
         this.walkerSourceInformation = walkerSourceInformation;
         this.elementConsumer = elementConsumer;
         this.section = section;
         this.connectionParser = connectionParser;
+        this.context = context;
     }
 
     /**********
@@ -121,6 +134,13 @@ public class PersistenceParseTreeWalker
         // notifier
         PersistenceParserGrammar.NotifierContext notifierContext = PureGrammarParserUtility.validateAndExtractOptionalField(ctx.notifier(), "notifier", persistence.sourceInformation);
         persistence.notifier = notifierContext == null ? new Notifier() : visitNotifier(notifierContext);
+
+        // testSuite
+        PersistenceParserGrammar.PersistenceTestSuitesContext testSuitesContext = PureGrammarParserUtility.validateAndExtractOptionalField(ctx.persistenceTestSuites(), "testSuites", persistence.sourceInformation);
+        if (testSuitesContext != null)
+        {
+            persistence.testSuites = ListIterate.collect(testSuitesContext.persistenceTestSuite(), this::visitPersistenceTestSuite);
+        }
 
         return persistence;
     }
@@ -909,5 +929,105 @@ public class PersistenceParseTreeWalker
         validityDerivation.sourceDateTimeThruField = PureGrammarParserUtility.fromIdentifier(validityDerivationThruFieldContext.identifier());
 
         return validityDerivation;
+    }
+
+    /**********
+     * testSuites
+     **********/
+
+    private PersistenceTestSuite visitPersistenceTestSuite(PersistenceParserGrammar.PersistenceTestSuiteContext ctx)
+    {
+        PersistenceTestSuite persistenceTestSuite = new PersistenceTestSuite();
+        persistenceTestSuite.sourceInformation = this.walkerSourceInformation.getSourceInformation(ctx);
+        persistenceTestSuite.id = PureGrammarParserUtility.fromIdentifier(ctx.identifier());
+
+        // data
+        PersistenceParserGrammar.PersistenceTestSuiteDataContext testSuiteDataContext = PureGrammarParserUtility.validateAndExtractOptionalField(ctx.persistenceTestSuiteData(), "data", persistenceTestSuite.sourceInformation);
+        if(testSuiteDataContext != null)
+        {
+            persistenceTestSuite.testData = visitPersistenceTestData(testSuiteDataContext);
+        }
+
+        // tests
+        PersistenceParserGrammar.PersistenceTestSuiteTestsContext testSuiteTestsContext = PureGrammarParserUtility.validateAndExtractRequiredField(ctx.persistenceTestSuiteTests(), "tests", persistenceTestSuite.sourceInformation);
+        persistenceTestSuite.tests = ListIterate.collect(testSuiteTestsContext.persistenceTestBlock(), this::visitPersistenceTest);
+
+        return persistenceTestSuite;
+    }
+
+    private TestData visitPersistenceTestData(PersistenceParserGrammar.PersistenceTestSuiteDataContext ctx)
+    {
+        TestData testData = new TestData();
+
+        testData.sourceInformation = this.walkerSourceInformation.getSourceInformation(ctx);
+        PersistenceParserGrammar.PersistenceTestConnectionsDataContext testConnectionsDataContext = PureGrammarParserUtility.validateAndExtractOptionalField(ctx.persistenceTestConnectionsData(), "connections", testData.sourceInformation);
+        if(testConnectionsDataContext != null)
+        {
+            testData.connectionsTestData = ListIterate.collect(testConnectionsDataContext.persistenceTestConnectionData(), this::visitPersistenceTestConnectionData);
+        }
+
+        return testData;
+    }
+
+    private ConnectionTestData visitPersistenceTestConnectionData(PersistenceParserGrammar.PersistenceTestConnectionDataContext ctx)
+    {
+        ConnectionTestData connectionData = new ConnectionTestData();
+
+        connectionData.sourceInformation = this.walkerSourceInformation.getSourceInformation(ctx);
+        connectionData.id = PureGrammarParserUtility.fromIdentifier(ctx.identifier());
+        connectionData.data = HelperEmbeddedDataGrammarParser.parseEmbeddedData(ctx.embeddedData(), this.walkerSourceInformation, this.context.getPureGrammarParserExtensions());
+
+        return connectionData;
+    }
+
+    private PersistenceTest visitPersistenceTest(PersistenceParserGrammar.PersistenceTestBlockContext ctx)
+    {
+        org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.PersistenceTest persistenceTest = new PersistenceTest();
+
+        persistenceTest.sourceInformation = this.walkerSourceInformation.getSourceInformation(ctx);
+
+        persistenceTest.id = PureGrammarParserUtility.fromIdentifier(ctx.identifier());
+
+        // parameters
+        PersistenceParserGrammar.PersistenceTestParametersContext testParametersContext = PureGrammarParserUtility.validateAndExtractOptionalField(ctx.persistenceTestParameters(), "parameters", persistenceTest.sourceInformation);
+        if(testParametersContext != null)
+        {
+            persistenceTest.parameters = ListIterate.collect(testParametersContext.persistenceTestParameter(), this::visitPersistenceTestParameter);
+        }
+
+        // asserts
+        PersistenceParserGrammar.PersistenceTestAssertsContext testAssertsContext = PureGrammarParserUtility.validateAndExtractRequiredField(ctx.persistenceTestAsserts(), "asserts", persistenceTest.sourceInformation);
+        persistenceTest.assertions = ListIterate.collect(testAssertsContext.persistenceTestAssert(), this::visitPersistenceTestAsserts);
+
+        return persistenceTest;
+    }
+
+    private ParameterValue visitPersistenceTestParameter(PersistenceParserGrammar.PersistenceTestParameterContext ctx)
+    {
+        ParameterValue parameterValue = new ParameterValue();
+
+        parameterValue.name = PureGrammarParserUtility.fromIdentifier(ctx.identifier());
+        parameterValue.value = this.visitTestParameter(ctx.primitiveValue());
+
+        return parameterValue;
+    }
+
+    private TestAssertion visitPersistenceTestAsserts(PersistenceParserGrammar.PersistenceTestAssertContext ctx)
+    {
+        TestAssertion testAssertion = HelperTestAssertionGrammarParser.parseTestAssertion(ctx.testAssertion(), this.walkerSourceInformation, this.context.getPureGrammarParserExtensions());
+        testAssertion.id = PureGrammarParserUtility.fromIdentifier(ctx.identifier());
+
+        return testAssertion;
+    }
+
+    private ValueSpecification visitTestParameter(PersistenceParserGrammar.PrimitiveValueContext ctx) {
+        DomainParser parser = new DomainParser();
+        int startLine = ctx.getStart().getLine();
+        int lineOffset = walkerSourceInformation.getLineOffset() + startLine - 1;
+        int columnOffset = (startLine == 1 ? walkerSourceInformation.getColumnOffset() : 0) + ctx.getStart().getCharPositionInLine();
+        ParseTreeWalkerSourceInformation persistenceParamSourceInformation = new ParseTreeWalkerSourceInformation.Builder(walkerSourceInformation.getSourceId(), lineOffset, columnOffset).build();
+        String parameter = this.input.getText(new Interval(ctx.start.getStartIndex(), ctx.stop.getStopIndex()));
+        ValueSpecification valueSpecification = parser.parsePrimitiveValue(parameter, persistenceParamSourceInformation, null);
+        return valueSpecification;
     }
 }

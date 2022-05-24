@@ -13,6 +13,7 @@ identifier:                                 VALID_STRING | STRING
                                             | ALL | LET | ALL_VERSIONS | ALL_VERSIONS_IN_RANGE      // from M3Parser
                                             | TRUE | FALSE | IMPORT | NONE | DATE_TIME
                                             | PERSISTENCE | PERSISTENCE_DOC | PERSISTENCE_TRIGGER | PERSISTENCE_SERVICE | PERSISTENCE_PERSISTER | PERSISTENCE_NOTIFIER
+                                            | PERSISTENCE_TEST_SUITES | PERSISTENCE_TEST_DATA | PERSISTENCE_TEST_CONNECTION_DATA | PERSISTENCE_TEST_TESTS | PERSISTENCE_TEST_ASSERTS | PERSISTENCE_TEST_PARAMETERS
                                             | TRIGGER_MANUAL | TRIGGER_CRON
                                             | PERSISTER_STREAMING | PERSISTER_BATCH | PERSISTER_SINK | PERSISTER_TARGET_SHAPE | PERSISTER_INGEST_MODE
                                             | NOTIFIER | NOTIFIER_NOTIFYEES | NOTIFYEE_EMAIL | NOTIFYEE_EMAIL_ADDRESS | NOTIFYEE_PAGER_DUTY| NOTIFYEE_PAGER_DUTY_URL
@@ -47,6 +48,7 @@ persistence:                                PERSISTENCE qualifiedName
                                                         | service
                                                         | persister
                                                         | notifier
+                                                        | persistenceTestSuites
                                                     )*
                                                 BRACE_CLOSE
 ;
@@ -423,4 +425,37 @@ mergeStrategyDeleteValues:                  MERGE_STRATEGY_DELETE_INDICATOR_VALU
                                                     STRING (COMMA STRING)*
                                                 BRACKET_CLOSE
                                             SEMI_COLON
+;
+
+// -------------------------------------- TEST --------------------------------------
+
+persistenceTestSuites:                  PERSISTENCE_TEST_SUITES COLON BRACKET_OPEN (persistenceTestSuite ( COMMA persistenceTestSuite )*)? BRACKET_CLOSE
+;
+persistenceTestSuite:                   identifier COLON BRACE_OPEN ( persistenceTestSuiteData | persistenceTestSuiteTests )* BRACE_CLOSE
+;
+persistenceTestSuiteData:               PERSISTENCE_TEST_DATA COLON BRACKET_OPEN (persistenceTestConnectionsData)* BRACKET_CLOSE
+;
+persistenceTestConnectionsData:         PERSISTENCE_TEST_CONNECTION_DATA COLON BRACKET_OPEN (persistenceTestConnectionData ( COMMA persistenceTestConnectionData )*)? BRACKET_CLOSE
+;
+persistenceTestConnectionData:          identifier COLON embeddedData
+;
+embeddedData:                           identifier ISLAND_OPEN (embeddedDataContent)*
+;
+embeddedDataContent:                    ISLAND_START | ISLAND_BRACE_OPEN | ISLAND_CONTENT | ISLAND_HASH | ISLAND_BRACE_CLOSE | ISLAND_END
+;
+persistenceTestSuiteTests:              PERSISTENCE_TEST_TESTS COLON BRACKET_OPEN ( persistenceTestBlock ( COMMA persistenceTestBlock )* )? BRACKET_CLOSE
+;
+persistenceTestBlock:                   identifier COLON BRACE_OPEN ( persistenceTestParameters | persistenceTestAsserts )* BRACE_CLOSE
+;
+persistenceTestParameters:              PERSISTENCE_TEST_PARAMETERS COLON BRACKET_OPEN ( persistenceTestParameter ( COMMA persistenceTestParameter )* )? BRACKET_CLOSE
+;
+persistenceTestParameter:               identifier EQUAL primitiveValue
+;
+persistenceTestAsserts:                 PERSISTENCE_TEST_ASSERTS COLON BRACKET_OPEN ( persistenceTestAssert ( COMMA persistenceTestAssert )* )? BRACKET_CLOSE
+;
+persistenceTestAssert:                  identifier COLON testAssertion
+;
+testAssertion:                          identifier ISLAND_OPEN (testAssertionContent)*
+;
+testAssertionContent:                   ISLAND_START | ISLAND_BRACE_OPEN | ISLAND_CONTENT | ISLAND_HASH | ISLAND_BRACE_CLOSE | ISLAND_END
 ;

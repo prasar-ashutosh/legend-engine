@@ -18,13 +18,17 @@ import org.eclipse.collections.api.factory.Lists;
 import org.eclipse.collections.impl.utility.Iterate;
 import org.eclipse.collections.impl.utility.LazyIterate;
 import org.eclipse.collections.impl.utility.ListIterate;
+import org.finos.legend.engine.language.pure.dsl.service.grammar.to.HelperServiceGrammarComposer;
 import org.finos.legend.engine.language.pure.grammar.to.DEPRECATED_PureGrammarComposerCore;
 import org.finos.legend.engine.language.pure.grammar.to.HelperConnectionGrammarComposer;
 import org.finos.legend.engine.language.pure.grammar.to.PureGrammarComposerContext;
 import org.finos.legend.engine.language.pure.grammar.to.PureGrammarComposerUtility;
+import org.finos.legend.engine.language.pure.grammar.to.data.HelperEmbeddedDataGrammarComposer;
+import org.finos.legend.engine.language.pure.grammar.to.test.assertion.HelperTestAssertionGrammarComposer;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.connection.Connection;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.connection.ConnectionPointer;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.Persistence;
+import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.PersistenceTestSuite;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.notifier.*;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.persister.BatchPersister;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.persister.Persister;
@@ -65,17 +69,19 @@ import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persist
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.trigger.ManualTrigger;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.trigger.Trigger;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.trigger.TriggerVisitor;
+import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.ParameterValue;
+import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.PersistenceTest;
+import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.ConnectionTestData;
 
 import java.util.List;
 
 import static org.finos.legend.engine.language.pure.grammar.to.PureGrammarComposerUtility.*;
 
-public class HelperPersistenceGrammarComposer
-{
-    private HelperPersistenceGrammarComposer() {}
+public class HelperPersistenceGrammarComposer {
+    private HelperPersistenceGrammarComposer() {
+    }
 
-    public static String renderPersistence(Persistence persistence, int indentLevel, PureGrammarComposerContext context)
-    {
+    public static String renderPersistence(Persistence persistence, int indentLevel, PureGrammarComposerContext context) {
         return "Persistence " + convertPath(persistence.getPath()) + "\n" +
                 "{\n" +
                 renderDocumentation(persistence.documentation, indentLevel) +
@@ -83,31 +89,27 @@ public class HelperPersistenceGrammarComposer
                 renderService(persistence.service, indentLevel) +
                 renderPersister(persistence.persister, indentLevel, context) +
                 renderNotifier(persistence.notifier, indentLevel) +
+                renderTestSuites(persistence.testSuites, indentLevel, context) +
                 "}";
     }
 
-    private static String renderDocumentation(String documentation, int indentLevel)
-    {
+    private static String renderDocumentation(String documentation, int indentLevel) {
         return getTabString(indentLevel) + "doc: " + convertString(documentation, true) + ";\n";
     }
 
-    private static String renderTrigger(Trigger trigger, int indentLevel)
-    {
+    private static String renderTrigger(Trigger trigger, int indentLevel) {
         return trigger.accept(new TriggerComposer(indentLevel));
     }
 
-    private static String renderService(String service, int indentLevel)
-    {
+    private static String renderService(String service, int indentLevel) {
         return getTabString(indentLevel) + "service: " + service + ";\n";
     }
 
-    private static String renderPersister(Persister persister, int indentLevel, PureGrammarComposerContext context)
-    {
+    private static String renderPersister(Persister persister, int indentLevel, PureGrammarComposerContext context) {
         return persister.accept(new PersisterComposer(indentLevel, context));
     }
 
-    private static String renderNotifier(Notifier notifier, int indentLevel)
-    {
+    private static String renderNotifier(Notifier notifier, int indentLevel) {
         if (notifier.notifyees.isEmpty()) {
             return "";
         }
@@ -117,8 +119,7 @@ public class HelperPersistenceGrammarComposer
                 getTabString(indentLevel) + "}\n";
     }
 
-    private static String renderNotifyees(List<Notifyee> notifyees, int indentLevel)
-    {
+    private static String renderNotifyees(List<Notifyee> notifyees, int indentLevel) {
         NotifyeeComposer visitor = new NotifyeeComposer(indentLevel + 1);
         return getTabString(indentLevel) + "notifyees:\n" +
                 getTabString(indentLevel) + "[\n" +
@@ -126,42 +127,124 @@ public class HelperPersistenceGrammarComposer
                 getTabString(indentLevel) + "]\n";
     }
 
+    private static String renderTestSuites(List<PersistenceTestSuite> testSuites, int indentLevel, PureGrammarComposerContext context) {
+        return getTabString(indentLevel) + "testSuites:\n" +
+                getTabString(indentLevel) + "[\n" +
+                String.join(",\n", ListIterate.collect(testSuites, testSuite -> HelperPersistenceGrammarComposer.renderPersistenceTestSuite(testSuite, context))) + "\n" +
+                getTabString(indentLevel) + "]\n";
+    }
+
+    public static String renderPersistenceTestSuite(PersistenceTestSuite persistenceTestSuite, PureGrammarComposerContext context) {
+        int baseIndentation = 2;
+        StringBuilder str = new StringBuilder();
+
+        str.append(getTabString(baseIndentation)).append(persistenceTestSuite.id).append(":\n");
+        str.append(getTabString(baseIndentation)).append("{\n");
+
+        // testData
+
+        if (persistenceTestSuite.testData != null) {
+            str.append(getTabString(baseIndentation + 1)).append("data").append(":\n");
+            str.append(getTabString(baseIndentation + 1)).append("[\n");
+
+            if (persistenceTestSuite.testData.connectionsTestData != null && !persistenceTestSuite.testData.connectionsTestData.isEmpty()) {
+                str.append(getTabString(baseIndentation + 2)).append("connections").append(":\n");
+                str.append(getTabString(baseIndentation + 2)).append("[\n");
+                str.append(String.join(",\n", ListIterate.collect(persistenceTestSuite.testData.connectionsTestData, data -> renderConnectionData(data, baseIndentation + 3, context)))).append("\n");
+                str.append(getTabString(baseIndentation + 2)).append("]\n");
+            }
+
+            str.append(getTabString(baseIndentation + 1)).append("]\n");
+        }
+
+        // tests
+        if (persistenceTestSuite.tests != null) {
+            str.append(getTabString(baseIndentation + 1)).append("tests").append(":\n");
+            str.append(getTabString(baseIndentation + 1)).append("[\n");
+            str.append(String.join(",\n", ListIterate.collect(persistenceTestSuite.tests, test -> renderPersistenceTest((PersistenceTest) test, baseIndentation + 2, context)))).append("\n");
+            str.append(getTabString(baseIndentation + 1)).append("]\n");
+        }
+
+        str.append(getTabString(baseIndentation)).append("}");
+
+        return str.toString();
+    }
+
+    private static String renderConnectionData(ConnectionTestData connectionData, int baseIndentation, PureGrammarComposerContext context) {
+        StringBuilder str = new StringBuilder();
+
+        str.append(getTabString(baseIndentation)).append(connectionData.id).append(":\n");
+        str.append(HelperEmbeddedDataGrammarComposer.composeEmbeddedData(connectionData.data, PureGrammarComposerContext.Builder.newInstance(context).withIndentationString(getTabString(baseIndentation + 1)).build()));
+
+        return str.toString();
+    }
+
+    private static String renderPersistenceTest(PersistenceTest test, int baseIndentation, PureGrammarComposerContext context) {
+        StringBuilder str = new StringBuilder();
+
+        str.append(getTabString(baseIndentation)).append(test.id).append(":\n");
+        str.append(getTabString(baseIndentation)).append("{\n");
+
+        // Parameters
+        if (test.parameters != null && !test.parameters.isEmpty()) {
+            str.append(getTabString(baseIndentation + 1)).append("parameters:\n");
+            str.append(getTabString(baseIndentation + 1)).append("[\n");
+            str.append(String.join(",\n", ListIterate.collect(test.parameters, param -> renderPersistenceTestParameter(param, baseIndentation + 2, context)))).append("\n");
+            str.append(getTabString(baseIndentation + 1)).append("]\n");
+        }
+
+        // Asserts
+        if (test.assertions != null) {
+            str.append(getTabString(baseIndentation + 1)).append("asserts:\n");
+            str.append(getTabString(baseIndentation + 1)).append("[\n");
+            str.append(String.join(",\n", ListIterate.collect(test.assertions, assertion -> HelperTestAssertionGrammarComposer.composeTestAssertion(assertion, PureGrammarComposerContext.Builder.newInstance(context).withIndentationString(getTabString(baseIndentation + 2)).build())))).append("\n");
+            str.append(getTabString(baseIndentation + 1)).append("]\n");
+        }
+
+        str.append(getTabString(baseIndentation)).append("}");
+
+        return str.toString();
+    }
+
+    private static String renderPersistenceTestParameter(ParameterValue parameterValue, int baseIndentation, PureGrammarComposerContext context) {
+        StringBuilder str = new StringBuilder();
+
+        str.append(getTabString(baseIndentation)).append(parameterValue.name);
+        str.append(" = ");
+        str.append(parameterValue.value.accept(DEPRECATED_PureGrammarComposerCore.Builder.newInstance(context).build()));
+
+        return str.toString();
+    }
+
     // helper visitors for class hierarchies
 
-    private static class TriggerComposer implements TriggerVisitor<String>
-    {
+    private static class TriggerComposer implements TriggerVisitor<String> {
         private final int indentLevel;
 
-        private TriggerComposer(int indentLevel)
-        {
+        private TriggerComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(ManualTrigger val)
-        {
+        public String visit(ManualTrigger val) {
             return getTabString(indentLevel) + "trigger: Manual;\n";
         }
 
         @Override
-        public String visit(CronTrigger val)
-        {
+        public String visit(CronTrigger val) {
             throw new UnsupportedOperationException("TODO: ledav -- implement cron trigger");
         }
     }
 
-    private static class NotifyeeComposer implements NotifyeeVisitor<String>
-    {
+    private static class NotifyeeComposer implements NotifyeeVisitor<String> {
         private final int indentLevel;
 
-        private NotifyeeComposer(int indentLevel)
-        {
+        private NotifyeeComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(EmailNotifyee val)
-        {
+        public String visit(EmailNotifyee val) {
             return getTabString(indentLevel) + "Email\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "address: '" + val.address + "';\n" +
@@ -169,8 +252,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(PagerDutyNotifyee val)
-        {
+        public String visit(PagerDutyNotifyee val) {
             return getTabString(indentLevel) + "PagerDuty\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "url: '" + val.url + "';\n" +
@@ -178,20 +260,17 @@ public class HelperPersistenceGrammarComposer
         }
     }
 
-    private static class PersisterComposer implements PersisterVisitor<String>
-    {
+    private static class PersisterComposer implements PersisterVisitor<String> {
         private final int indentLevel;
         private final PureGrammarComposerContext context;
 
-        private PersisterComposer(int indentLevel, PureGrammarComposerContext context)
-        {
+        private PersisterComposer(int indentLevel, PureGrammarComposerContext context) {
             this.indentLevel = indentLevel;
             this.context = context;
         }
 
         @Override
-        public String visit(StreamingPersister val)
-        {
+        public String visit(StreamingPersister val) {
             return getTabString(indentLevel) + "persister: Streaming\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderSink(val.sink, indentLevel + 1, context) +
@@ -199,8 +278,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(BatchPersister val)
-        {
+        public String visit(BatchPersister val) {
             return getTabString(indentLevel) + "persister: Batch\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderSink(val.sink, indentLevel + 1, context) +
@@ -209,36 +287,30 @@ public class HelperPersistenceGrammarComposer
                     getTabString(indentLevel) + "}\n";
         }
 
-        private static String renderSink(Sink sink, int indentLevel, PureGrammarComposerContext context)
-        {
+        private static String renderSink(Sink sink, int indentLevel, PureGrammarComposerContext context) {
             return sink.accept(new SinkComposer(indentLevel, context));
         }
 
-        private static String renderIngestMode(IngestMode ingestMode, int indentLevel)
-        {
+        private static String renderIngestMode(IngestMode ingestMode, int indentLevel) {
             return ingestMode.accept(new IngestModeComposer(indentLevel));
         }
 
-        private static String renderTargetShape(TargetShape targetShape, int indentLevel)
-        {
+        private static String renderTargetShape(TargetShape targetShape, int indentLevel) {
             return targetShape.accept(new TargetShapeComposer(indentLevel));
         }
     }
 
-    private static class SinkComposer implements SinkVisitor<String>
-    {
+    private static class SinkComposer implements SinkVisitor<String> {
         private final int indentLevel;
         private final PureGrammarComposerContext context;
 
-        private SinkComposer(int indentLevel, PureGrammarComposerContext context)
-        {
+        private SinkComposer(int indentLevel, PureGrammarComposerContext context) {
             this.indentLevel = indentLevel;
             this.context = context;
         }
 
         @Override
-        public String visit(RelationalSink val)
-        {
+        public String visit(RelationalSink val) {
             return getTabString(indentLevel) + "sink: Relational\n" +
                     getTabString(indentLevel) + "{\n" +
                     (val.connection == null ? "" : renderConnection(val.connection, indentLevel + 1, context)) +
@@ -246,8 +318,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(ObjectStorageSink val)
-        {
+        public String visit(ObjectStorageSink val) {
             return getTabString(indentLevel) + "sink: ObjectStorage\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderBinding(val.binding, indentLevel + 1) +
@@ -255,16 +326,13 @@ public class HelperPersistenceGrammarComposer
                     getTabString(indentLevel) + "}\n";
         }
 
-        private static String renderBinding(String binding, int indentLevel)
-        {
+        private static String renderBinding(String binding, int indentLevel) {
             return getTabString(indentLevel) + "binding: " + binding + ";\n";
         }
 
-        private static String renderConnection(Connection connection, int indentLevel, PureGrammarComposerContext context)
-        {
+        private static String renderConnection(Connection connection, int indentLevel, PureGrammarComposerContext context) {
             DEPRECATED_PureGrammarComposerCore composerCore = DEPRECATED_PureGrammarComposerCore.Builder.newInstance(context).build();
-            if (connection instanceof ConnectionPointer)
-            {
+            if (connection instanceof ConnectionPointer) {
                 return getTabString(indentLevel) + "connection: " + PureGrammarComposerUtility.convertPath(connection.accept(composerCore)) + ";\n";
             }
             return getTabString(indentLevel) + "connection:\n" +
@@ -275,18 +343,15 @@ public class HelperPersistenceGrammarComposer
         }
     }
 
-    private static class TargetShapeComposer implements TargetShapeVisitor<String>
-    {
+    private static class TargetShapeComposer implements TargetShapeVisitor<String> {
         private final int indentLevel;
 
-        private TargetShapeComposer(int indentLevel)
-        {
+        private TargetShapeComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(FlatTarget val)
-        {
+        public String visit(FlatTarget val) {
             return getTabString(indentLevel) + "targetShape: Flat\n" +
                     getTabString(indentLevel) + "{\n" +
                     (val.modelClass == null ? "" : getTabString(indentLevel + 1) + "modelClass: " + val.modelClass + ";\n") +
@@ -297,8 +362,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(MultiFlatTarget val)
-        {
+        public String visit(MultiFlatTarget val) {
             return getTabString(indentLevel) + "targetShape: MultiFlat\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "modelClass: " + val.modelClass + ";\n" +
@@ -310,8 +374,7 @@ public class HelperPersistenceGrammarComposer
                     getTabString(indentLevel) + "}\n";
         }
 
-        private static String renderParts(MultiFlatTarget multiFlatTarget, int indentLevel)
-        {
+        private static String renderParts(MultiFlatTarget multiFlatTarget, int indentLevel) {
             StringBuilder builder = new StringBuilder();
             ListIterate.forEachWithIndex(multiFlatTarget.parts, (part, i) ->
             {
@@ -322,51 +385,43 @@ public class HelperPersistenceGrammarComposer
             return builder.toString();
         }
 
-        private static String renderPartProperties(MultiFlatTargetPart part, int indentLevel)
-        {
+        private static String renderPartProperties(MultiFlatTargetPart part, int indentLevel) {
             return getTabString(indentLevel) + "modelProperty: " + part.modelProperty + ";\n" +
                     getTabString(indentLevel) + "targetName: " + convertString(part.targetName, true) + ";\n" +
                     renderPartitionFields(part.partitionFields, indentLevel) +
                     renderDeduplicationStrategy(part.deduplicationStrategy, indentLevel);
         }
 
-        private static String renderPartitionFields(List<String> partitionFields, int indentLevel)
-        {
+        private static String renderPartitionFields(List<String> partitionFields, int indentLevel) {
             return !partitionFields.isEmpty() ? getTabString(indentLevel) + "partitionFields: " + "[" +
                     Lists.immutable.ofAll(partitionFields).makeString(", ") +
                     "];\n" : "";
         }
 
-        private static String renderDeduplicationStrategy(DeduplicationStrategy deduplicationStrategy, int indentLevel)
-        {
+        private static String renderDeduplicationStrategy(DeduplicationStrategy deduplicationStrategy, int indentLevel) {
             return deduplicationStrategy.accept(new DeduplicationStrategyComposer(indentLevel));
         }
     }
 
-    private static class DeduplicationStrategyComposer implements DeduplicationStrategyVisitor<String>
-    {
+    private static class DeduplicationStrategyComposer implements DeduplicationStrategyVisitor<String> {
         private final int indentLevel;
 
-        private DeduplicationStrategyComposer(int indentLevel)
-        {
+        private DeduplicationStrategyComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(NoDeduplicationStrategy val)
-        {
+        public String visit(NoDeduplicationStrategy val) {
             return getTabString(indentLevel) + "deduplicationStrategy: None;\n";
         }
 
         @Override
-        public String visit(AnyVersionDeduplicationStrategy val)
-        {
+        public String visit(AnyVersionDeduplicationStrategy val) {
             return getTabString(indentLevel) + "deduplicationStrategy: AnyVersion;\n";
         }
 
         @Override
-        public String visit(MaxVersionDeduplicationStrategy val)
-        {
+        public String visit(MaxVersionDeduplicationStrategy val) {
             return getTabString(indentLevel) + "deduplicationStrategy: MaxVersion\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "versionField: " + val.versionField + ";\n" +
@@ -374,8 +429,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(DuplicateCountDeduplicationStrategy val)
-        {
+        public String visit(DuplicateCountDeduplicationStrategy val) {
             return getTabString(indentLevel) + "deduplicationStrategy: DuplicateCount\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "duplicateCountName: '" + val.duplicateCountName + "';\n" +
@@ -383,18 +437,15 @@ public class HelperPersistenceGrammarComposer
         }
     }
 
-    private static class IngestModeComposer implements IngestModeVisitor<String>
-    {
+    private static class IngestModeComposer implements IngestModeVisitor<String> {
         private final int indentLevel;
 
-        private IngestModeComposer(int indentLevel)
-        {
+        private IngestModeComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(NontemporalSnapshot val)
-        {
+        public String visit(NontemporalSnapshot val) {
             return getTabString(indentLevel) + "ingestMode: NontemporalSnapshot\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderAuditing(val.auditing, indentLevel + 1) +
@@ -402,8 +453,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(UnitemporalSnapshot val)
-        {
+        public String visit(UnitemporalSnapshot val) {
             return getTabString(indentLevel) + "ingestMode: UnitemporalSnapshot\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderTransactionMilestoning(val.transactionMilestoning, indentLevel + 1) +
@@ -411,8 +461,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(BitemporalSnapshot val)
-        {
+        public String visit(BitemporalSnapshot val) {
             return getTabString(indentLevel) + "ingestMode: BitemporalSnapshot\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderTransactionMilestoning(val.transactionMilestoning, indentLevel + 1) +
@@ -421,8 +470,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(NontemporalDelta val)
-        {
+        public String visit(NontemporalDelta val) {
             return getTabString(indentLevel) + "ingestMode: NontemporalDelta\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderMergeStrategy(val.mergeStrategy, indentLevel + 1) +
@@ -431,8 +479,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(UnitemporalDelta val)
-        {
+        public String visit(UnitemporalDelta val) {
             return getTabString(indentLevel) + "ingestMode: UnitemporalDelta\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderMergeStrategy(val.mergeStrategy, indentLevel + 1) +
@@ -441,8 +488,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(BitemporalDelta val)
-        {
+        public String visit(BitemporalDelta val) {
             return getTabString(indentLevel) + "ingestMode: BitemporalDelta\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderMergeStrategy(val.mergeStrategy, indentLevel + 1) +
@@ -452,8 +498,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(AppendOnly val)
-        {
+        public String visit(AppendOnly val) {
             return getTabString(indentLevel) + "ingestMode: AppendOnly\n" +
                     getTabString(indentLevel) + "{\n" +
                     renderAuditing(val.auditing, indentLevel + 1) +
@@ -461,63 +506,53 @@ public class HelperPersistenceGrammarComposer
                     getTabString(indentLevel) + "}\n";
         }
 
-        private static String renderMergeStrategy(MergeStrategy mergeStrategy, int indentLevel)
-        {
+        private static String renderMergeStrategy(MergeStrategy mergeStrategy, int indentLevel) {
             return mergeStrategy.accept(new MergeStrategyComposer(indentLevel));
         }
 
-        private static String renderAuditing(Auditing auditing, int indentLevel)
-        {
+        private static String renderAuditing(Auditing auditing, int indentLevel) {
             return auditing.accept(new AuditingComposer(indentLevel));
         }
 
-        private static String renderTransactionMilestoning(TransactionMilestoning transactionMilestoning, int indentLevel)
-        {
+        private static String renderTransactionMilestoning(TransactionMilestoning transactionMilestoning, int indentLevel) {
             return transactionMilestoning.accept(new TransactionMilestoningComposer(indentLevel));
         }
 
-        private static String renderValidityMilestoning(ValidityMilestoning validityMilestoning, int indentLevel)
-        {
+        private static String renderValidityMilestoning(ValidityMilestoning validityMilestoning, int indentLevel) {
             return validityMilestoning.accept(new ValidityMilestoningComposer(indentLevel));
         }
     }
 
-    private static class AuditingComposer implements AuditingVisitor<String>
-    {
+    private static class AuditingComposer implements AuditingVisitor<String> {
         private final int indentLevel;
 
-        private AuditingComposer(int indentLevel)
-        {
+        private AuditingComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(NoAuditing val)
-        {
+        public String visit(NoAuditing val) {
             return getTabString(indentLevel) + "auditing: None;\n";
         }
 
         @Override
-        public String visit(DateTimeAuditing val)
-        {
+        public String visit(DateTimeAuditing val) {
             return getTabString(indentLevel) + "auditing: DateTime\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "dateTimeName: '" + val.dateTimeName + "';\n" +
-                    getTabString(indentLevel) + "}\n";        }
+                    getTabString(indentLevel) + "}\n";
+        }
     }
 
-    private static class TransactionMilestoningComposer implements TransactionMilestoningVisitor<String>
-    {
+    private static class TransactionMilestoningComposer implements TransactionMilestoningVisitor<String> {
         private final int indentLevel;
 
-        private TransactionMilestoningComposer(int indentLevel)
-        {
+        private TransactionMilestoningComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(BatchIdTransactionMilestoning val)
-        {
+        public String visit(BatchIdTransactionMilestoning val) {
             return getTabString(indentLevel) + "transactionMilestoning: BatchId\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "batchIdInName: '" + val.batchIdInName + "';\n" +
@@ -526,8 +561,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(DateTimeTransactionMilestoning val)
-        {
+        public String visit(DateTimeTransactionMilestoning val) {
             return getTabString(indentLevel) + "transactionMilestoning: DateTime\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "dateTimeInName: '" + val.dateTimeInName + "';\n" +
@@ -536,8 +570,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(BatchIdAndDateTimeTransactionMilestoning val)
-        {
+        public String visit(BatchIdAndDateTimeTransactionMilestoning val) {
             return getTabString(indentLevel) + "transactionMilestoning: BatchIdAndDateTime\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "batchIdInName: '" + val.batchIdInName + "';\n" +
@@ -548,18 +581,15 @@ public class HelperPersistenceGrammarComposer
         }
     }
 
-    private static class ValidityMilestoningComposer implements ValidityMilestoningVisitor<String>
-    {
+    private static class ValidityMilestoningComposer implements ValidityMilestoningVisitor<String> {
         private final int indentLevel;
 
-        private ValidityMilestoningComposer(int indentLevel)
-        {
+        private ValidityMilestoningComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(DateTimeValidityMilestoning val)
-        {
+        public String visit(DateTimeValidityMilestoning val) {
             return getTabString(indentLevel) + "validityMilestoning: DateTime\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "dateTimeFromName: '" + val.dateTimeFromName + "';\n" +
@@ -568,24 +598,20 @@ public class HelperPersistenceGrammarComposer
                     getTabString(indentLevel) + "}\n";
         }
 
-        private static String renderValidityDerivation(ValidityDerivation validityDerivation, int indentLevel)
-        {
+        private static String renderValidityDerivation(ValidityDerivation validityDerivation, int indentLevel) {
             return validityDerivation.accept(new ValidityDerivationComposer(indentLevel));
         }
     }
 
-    private static class ValidityDerivationComposer implements ValidityDerivationVisitor<String>
-    {
+    private static class ValidityDerivationComposer implements ValidityDerivationVisitor<String> {
         private final int indentLevel;
 
-        private ValidityDerivationComposer(int indentLevel)
-        {
+        private ValidityDerivationComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(SourceSpecifiesFromDateTime val)
-        {
+        public String visit(SourceSpecifiesFromDateTime val) {
             return getTabString(indentLevel) + "derivation: SourceSpecifiesFromDateTime\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "sourceDateTimeFromField: " + val.sourceDateTimeFromField + ";\n" +
@@ -593,8 +619,7 @@ public class HelperPersistenceGrammarComposer
         }
 
         @Override
-        public String visit(SourceSpecifiesFromAndThruDateTime val)
-        {
+        public String visit(SourceSpecifiesFromAndThruDateTime val) {
 
             return getTabString(indentLevel) + "derivation: SourceSpecifiesFromAndThruDateTime\n" +
                     getTabString(indentLevel) + "{\n" +
@@ -604,24 +629,20 @@ public class HelperPersistenceGrammarComposer
         }
     }
 
-    private static class MergeStrategyComposer implements MergeStrategyVisitor<String>
-    {
+    private static class MergeStrategyComposer implements MergeStrategyVisitor<String> {
         private final int indentLevel;
 
-        private MergeStrategyComposer(int indentLevel)
-        {
+        private MergeStrategyComposer(int indentLevel) {
             this.indentLevel = indentLevel;
         }
 
         @Override
-        public String visit(NoDeletesMergeStrategy val)
-        {
+        public String visit(NoDeletesMergeStrategy val) {
             return getTabString(indentLevel) + "mergeStrategy: NoDeletes;\n";
         }
 
         @Override
-        public String visit(DeleteIndicatorMergeStrategy val)
-        {
+        public String visit(DeleteIndicatorMergeStrategy val) {
             return getTabString(indentLevel) + "mergeStrategy: DeleteIndicator\n" +
                     getTabString(indentLevel) + "{\n" +
                     getTabString(indentLevel + 1) + "deleteField: " + val.deleteField + ";\n" +
@@ -629,16 +650,12 @@ public class HelperPersistenceGrammarComposer
                     getTabString(indentLevel) + "}\n";
         }
 
-        private static String renderDeleteValues(DeleteIndicatorMergeStrategy strategy, int indentLevel)
-        {
+        private static String renderDeleteValues(DeleteIndicatorMergeStrategy strategy, int indentLevel) {
             StringBuilder builder = new StringBuilder();
             builder.append(getTabString(indentLevel)).append("deleteValues: ");
-            if (!strategy.deleteValues.isEmpty())
-            {
+            if (!strategy.deleteValues.isEmpty()) {
                 builder.append("[").append(LazyIterate.collect(strategy.deleteValues, d -> convertString(d, true)).makeString(", ")).append("];\n");
-            }
-            else
-            {
+            } else {
                 builder.append("[];\n");
             }
             return builder.toString();

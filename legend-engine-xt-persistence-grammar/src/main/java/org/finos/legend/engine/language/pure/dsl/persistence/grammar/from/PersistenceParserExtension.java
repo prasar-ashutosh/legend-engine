@@ -51,7 +51,7 @@ public class PersistenceParserExtension implements PureGrammarParserExtension
         section.sourceInformation = parserInfo.sourceInformation;
 
         ConnectionParser connectionParser = ConnectionParser.newInstance(context.getPureGrammarParserExtensions());
-        PersistenceParseTreeWalker walker = new PersistenceParseTreeWalker(parserInfo.walkerSourceInformation, elementConsumer, section, connectionParser);
+        PersistenceParseTreeWalker walker = new PersistenceParseTreeWalker(parserInfo.input, parserInfo.walkerSourceInformation, elementConsumer, section, connectionParser, context);
         walker.visit((PersistenceParserGrammar.DefinitionContext) parserInfo.rootContext);
 
         return section;
@@ -64,6 +64,7 @@ public class PersistenceParserExtension implements PureGrammarParserExtension
         PersistenceLexerGrammar lexer = new PersistenceLexerGrammar(input);
         lexer.removeErrorListeners();
         lexer.addErrorListener(errorListener);
+
         PersistenceParserGrammar parser = new PersistenceParserGrammar(new CommonTokenStream(lexer));
         parser.removeErrorListeners();
         parser.addErrorListener(errorListener);

@@ -17,11 +17,9 @@ package org.finos.legend.engine.language.pure.dsl.persistence.grammar.test;
 import org.finos.legend.engine.language.pure.grammar.test.TestGrammarRoundtrip;
 import org.junit.Test;
 
-public class TestPersistenceGrammarRoundtrip extends TestGrammarRoundtrip.TestGrammarRoundtripTestSuite
-{
+public class TestPersistenceGrammarRoundtrip extends TestGrammarRoundtrip.TestGrammarRoundtripTestSuite {
     @Test
-    public void persistenceFlat()
-    {
+    public void persistenceFlat() {
         test("###Persistence\n" +
                 "import test::*;\n" +
                 "Persistence test::TestPersistence\n" +
@@ -89,8 +87,128 @@ public class TestPersistenceGrammarRoundtrip extends TestGrammarRoundtrip.TestGr
     }
 
     @Test
-    public void persistenceMultiFlat()
-    {
+    public void testPersistenceTestSuite() {
+        String persistenceCodeBlock = "###Persistence\n" +
+                "import test::*;\n" +
+                "Persistence test::TestPersistence\n" +
+                "{\n" +
+                "  doc: 'test doc';\n" +
+                "  trigger: Manual;\n" +
+                "  service: test::service::Service;\n" +
+                "  persister: Batch\n" +
+                "  {\n" +
+                "    sink: Relational\n" +
+                "    {\n" +
+                "      connection:\n" +
+                "      #{\n" +
+                "        JsonModelConnection\n" +
+                "        {\n" +
+                "          class: org::dxl::Animal;\n" +
+                "          url: 'my_url2';\n" +
+                "        }\n" +
+                "      }#\n" +
+                "    }\n" +
+                "    ingestMode: BitemporalSnapshot\n" +
+                "    {\n" +
+                "      transactionMilestoning: BatchId\n" +
+                "      {\n" +
+                "        batchIdInName: 'batchIdIn';\n" +
+                "        batchIdOutName: 'batchIdOut';\n" +
+                "      }\n" +
+                "      validityMilestoning: DateTime\n" +
+                "      {\n" +
+                "        dateTimeFromName: 'FROM_Z';\n" +
+                "        dateTimeThruName: 'THRU_Z';\n" +
+                "        derivation: SourceSpecifiesFromAndThruDateTime\n" +
+                "        {\n" +
+                "          sourceDateTimeFromField: sourceFrom;\n" +
+                "          sourceDateTimeThruField: sourceThru;\n" +
+                "        }\n" +
+                "      }\n" +
+                "    }\n" +
+                "    targetShape: Flat\n" +
+                "    {\n" +
+                "      modelClass: test::ModelClass;\n" +
+                "      targetName: 'TestDataset1';\n" +
+                "      partitionFields: [propertyA, propertyB];\n" +
+                "      deduplicationStrategy: MaxVersion\n" +
+                "      {\n" +
+                "        versionField: version;\n" +
+                "      }\n" +
+                "    }\n" +
+                "  }\n" +
+                "  notifier:\n" +
+                "  {\n" +
+                "    notifyees:\n" +
+                "    [\n" +
+                "      Email\n" +
+                "      {\n" +
+                "        address: 'x.y@z.com';\n" +
+                "      },\n" +
+                "      PagerDuty\n" +
+                "      {\n" +
+                "        url: 'https://x.com';\n" +
+                "      }\n" +
+                "    ]\n" +
+                "  }\n" +
+                "%s" +
+                "}\n";
+
+        //Test Empty TestSuite
+        String emptyTestSuite = "  testSuites:\n" +
+                "  [\n" +
+                "\n" +
+                "  ]\n";
+
+        String persistenceCodeWithEmptyTestSuite = String.format(persistenceCodeBlock, emptyTestSuite);
+        test(persistenceCodeWithEmptyTestSuite);
+
+        //Test Single TestSuite with data
+        String testSuiteWithData = "  testSuites:\n" +
+                "  [\n" +
+                "    testSuite1:\n" +
+                "    {\n" +
+                "      data:\n" +
+                "      [\n" +
+                "        connections:\n" +
+                "        [\n" +
+                "          connection1:\n" +
+                "            ExternalFormat\n" +
+                "            #{\n" +
+                "              contentType: 'application/x.flatdata';\n" +
+                "              data: 'FIRST_NAME,LAST_NAME\\nFred,Bloggs\\nJane,Doe';\n" +
+                "            }#\n" +
+                "        ]\n" +
+                "      ]\n" +
+                "      tests:\n" +
+                "      [\n" +
+                "        test1:\n" +
+                "        {\n" +
+                "          asserts:\n" +
+                "          [\n" +
+                "            assert1:\n" +
+                "              EqualToJson\n" +
+                "              #{\n" +
+                "                expected : \n" +
+                "                  ExternalFormat\n" +
+                "                  #{\n" +
+                "                    contentType: 'application/json';\n" +
+                "                    data: '{Age:12, Name:\"dummy\"}';\n" +
+                "                  }#;\n" +
+                "              }#\n" +
+                "          ]\n" +
+                "        }\n" +
+                "      ]\n" +
+                "    }\n" +
+                "  ]\n";
+
+        String persistenceCodeWithTestSuiteWithData = String.format(persistenceCodeBlock, testSuiteWithData);
+        test(persistenceCodeWithTestSuiteWithData);
+
+    }
+
+    @Test
+    public void persistenceMultiFlat() {
         test("###Persistence\n" +
                 "import test::*;\n" +
                 "Persistence test::TestPersistence\n" +

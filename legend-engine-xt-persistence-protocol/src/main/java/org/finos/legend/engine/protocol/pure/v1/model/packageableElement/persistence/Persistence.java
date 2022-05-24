@@ -19,6 +19,9 @@ import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.Package
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.notifier.Notifier;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.persister.Persister;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence.trigger.Trigger;
+import org.finos.legend.engine.protocol.pure.v1.model.test.TestSuite;
+
+import java.util.List;
 
 public class Persistence extends PackageableElement
 {
@@ -27,6 +30,7 @@ public class Persistence extends PackageableElement
     public String service;
     public Persister persister;
     public Notifier notifier;
+    public List<PersistenceTestSuite> testSuites;
 
     @Override
     public <T> T accept(PackageableElementVisitor<T> visitor) {
