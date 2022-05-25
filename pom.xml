@@ -42,6 +42,7 @@
         <module>legend-engine-xt-persistence-grammar</module>
         <module>legend-engine-xt-persistence-protocol</module>
         <module>legend-engine-xt-persistence-pure</module>
+        <module>legend-engine-xt-persistence-test</module>
 
         <module>legend-engine-xt-serviceStore-executionPlan</module>
         <module>legend-engine-xt-serviceStore-protocol</module>
@@ -601,6 +602,11 @@
             <dependency>
                 <groupId>org.finos.legend.engine</groupId>
                 <artifactId>legend-engine-xt-persistence-pure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.finos.legend.engine</groupId>
+                <artifactId>legend-engine-xt-persistence-test</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

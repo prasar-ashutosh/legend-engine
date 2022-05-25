@@ -40,7 +40,12 @@ public class TestGrammarRoundtrip
          */
         public static void test(String code)
         {
-            test(code, null);
+            try {
+                test(code, null);
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
         public void testFrom(String code, String expectedProtocolPath)

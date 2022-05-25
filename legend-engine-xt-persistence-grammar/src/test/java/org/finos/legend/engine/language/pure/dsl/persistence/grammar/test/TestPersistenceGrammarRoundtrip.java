@@ -14,8 +14,17 @@
 
 package org.finos.legend.engine.language.pure.dsl.persistence.grammar.test;
 
+import org.finos.legend.engine.language.pure.compiler.Compiler;
+import org.finos.legend.engine.language.pure.compiler.toPureGraph.PureModel;
+import org.finos.legend.engine.language.pure.grammar.from.PureGrammarParser;
 import org.finos.legend.engine.language.pure.grammar.test.TestGrammarRoundtrip;
+import org.finos.legend.engine.protocol.pure.v1.model.context.PureModelContextData;
+import org.finos.legend.engine.protocol.pure.v1.model.test.result.TestResult;
+import org.finos.legend.engine.shared.core.deployment.DeploymentMode;
+import org.finos.legend.pure.generated.Root_meta_legend_service_metamodel_Service;
 import org.junit.Test;
+
+import java.util.List;
 
 public class TestPersistenceGrammarRoundtrip extends TestGrammarRoundtrip.TestGrammarRoundtripTestSuite {
     @Test
@@ -203,8 +212,15 @@ public class TestPersistenceGrammarRoundtrip extends TestGrammarRoundtrip.TestGr
                 "  ]\n";
 
         String persistenceCodeWithTestSuiteWithData = String.format(persistenceCodeBlock, testSuiteWithData);
-        test(persistenceCodeWithTestSuiteWithData);
+        //test(persistenceCodeWithTestSuiteWithData);
 
+//        ServiceTestableRunnerExtension serviceTestableRunnerExtension = new ServiceTestableRunnerExtension();
+//
+//        PureModelContextData modelDataWithReferenceData = PureGrammarParser.newInstance().parseModel(persistenceCodeWithTestSuiteWithData);
+//        PureModel pureModelWithReferenceData = Compiler.compile(modelDataWithReferenceData, DeploymentMode.TEST, null);
+//
+//        Root_meta_legend_service_metamodel_Service serviceWithReferenceData = (Root_meta_legend_service_metamodel_Service) pureModelWithReferenceData.getPackageableElement("testServiceStoreTestSuites::TestService");
+//        List<TestResult> serviceStoreTestResults = serviceTestableRunnerExtension.executeAllTest(serviceWithReferenceData, pureModelWithReferenceData, modelDataWithReferenceData);
     }
 
     @Test
