@@ -15,9 +15,17 @@
 package org.finos.legend.engine.protocol.pure.v1.model.packageableElement.persistence;
 
 import org.finos.legend.engine.protocol.pure.v1.model.test.AtomicTest;
+import org.finos.legend.engine.protocol.pure.v1.model.test.assertion.TestAssertion;
 
 import java.util.List;
 
 public class PersistenceTest extends AtomicTest {
-    public List<ParameterValue> parameters;
+    boolean isTestDataAlloyServiceOutput;
+    public List<TestBatch> testBatches;
+}
+
+class TestBatch
+{
+    public TestData testData;
+    public List<TestAssertion> assertions;
 }

@@ -30,7 +30,7 @@ public class Persistence extends PackageableElement
     public String service;
     public Persister persister;
     public Notifier notifier;
-    public List<PersistenceTestSuite> testSuites;
+    public PersistenceTest persistenceTest;
 
     @Override
     public <T> T accept(PackageableElementVisitor<T> visitor) {
