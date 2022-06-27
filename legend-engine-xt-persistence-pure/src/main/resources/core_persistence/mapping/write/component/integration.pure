@@ -1,0 +1,63 @@
+// Copyright 2020 Goldman Sachs
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import meta::legend::service::metamodel::*;
+
+import meta::relational::runtime::*;
+import meta::relational::metamodel::*;
+import meta::relational::metamodel::relation::*;
+import meta::relational::metamodel::datatype::*;
+import meta::pure::alloy::connections::alloy::specification::*;
+
+import meta::pure::persistence::metamodel::*;
+import meta::pure::persistence::metamodel::trigger::*;
+import meta::pure::persistence::metamodel::notifier::*;
+import meta::pure::persistence::metamodel::persister::*;
+import meta::pure::persistence::metamodel::persister::sink::*;
+import meta::pure::persistence::metamodel::persister::targetshape::*;
+import meta::pure::persistence::metamodel::persister::deduplication::*;
+import meta::pure::persistence::metamodel::persister::ingestmode::*;
+import meta::pure::persistence::metamodel::persister::ingestmode::snapshot::*;
+import meta::pure::persistence::metamodel::persister::audit::*;
+import meta::pure::persistence::metamodel::persister::transactionmilestoning::*;
+
+import meta::pure::alloy::connections::*;
+import meta::pure::functions::meta::*;
+import meta::pure::runtime::*;
+import meta::pure::store::*;
+
+import meta::mapping::write::component::integration::*;
+
+
+function  meta::mapping::write::component::integration::getTargetSchema(persistence: Persistence[1]): meta::mapping::write::component::metamodel::Dataset[1]
+{
+  assert($persistence.persister->instanceOf(BatchPersister), | 'Allow write component test can currently only handle batch persistence');
+  let batchPersister = $persistence.persister->cast(@BatchPersister);
+
+  assert($batchPersister.targetShape->instanceOf(FlatTarget), | 'Allow write component test can currently only handle flat target shapes');
+  let flatTargetShape = $batchPersister.targetShape->cast(@FlatTarget);
+  assert($flatTargetShape.deduplicationStrategy->instanceOf(NoDeduplicationStrategy), 'Allow write component test can currently only handle NoDeduplicationStrategy in FlatTarget <%s>', [$flatTargetShape.targetName]);
+
+  assertInstanceOf($batchPersister.sink, RelationalSink, |'Allow write component can only handle RelationalSink for now in a Persister');
+  let sink = $batchPersister.sink->cast(@RelationalSink);
+
+  assertNotEmpty($sink.connection, |'Expecting Connection in Sink, found none');
+  let connection = $sink.connection->toOne();
+
+  ^meta::mapping::write::component::metamodel::Dataset(
+      schemaName='my_schema',
+      tableName=$flatTargetShape.targetName,
+      dbName='my_db'
+  );
+}
