@@ -16,6 +16,7 @@ package org.finos.legend.engine.persistence.components.testcases.ingestmode.unit
 
 import org.finos.legend.engine.persistence.components.BaseTest;
 import org.finos.legend.engine.persistence.components.common.Datasets;
+import org.finos.legend.engine.persistence.components.common.OptimizationFilter;
 import org.finos.legend.engine.persistence.components.ingestmode.UnitemporalDelta;
 import org.finos.legend.engine.persistence.components.ingestmode.merge.DeleteIndicatorMergeStrategy;
 import org.finos.legend.engine.persistence.components.ingestmode.transactionmilestoning.BatchId;
@@ -30,6 +31,7 @@ import org.finos.legend.engine.persistence.components.scenarios.UnitemporalDelta
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -183,6 +185,42 @@ public abstract class UnitmemporalDeltaBatchIdBasedTestCases extends BaseTest
             Assertions.assertEquals("Field \"batch_id_in\" must be a primary key", e.getMessage());
         }
     }
+
+    @Test
+    void testUnitemporalDeltaWithOptimizationFilters()
+    {
+        TestScenario scenario = scenarios.BATCH_ID_BASED__NO_DEL_IND__NO_DATA_SPLITS();
+        OptimizationFilter filter = OptimizationFilter.of("id", 1, 2);
+        RelationalGenerator generator = RelationalGenerator.builder()
+                .ingestMode(scenario.getIngestMode())
+                .relationalSink(getRelationalSink())
+                .executionTimestampClock(fixedClock_2000_01_01)
+                .collectStatistics(true)
+                .optimizationFilters(Arrays.asList(filter))
+                .build();
+        GeneratorResult operations = generator.generateOperations(scenario.getDatasets());
+        verifyUnitemporalDeltaWithOptimizationFilters(operations);
+    }
+
+    public abstract void verifyUnitemporalDeltaWithOptimizationFilters(GeneratorResult operations);
+
+    @Test
+    void testUnitemporalDeltaWithOptimizationFiltersPlaceHolder()
+    {
+        TestScenario scenario = scenarios.BATCH_ID_BASED__NO_DEL_IND__NO_DATA_SPLITS();
+        OptimizationFilter filter = OptimizationFilter.of("id", "{ID_LOWER_BOUND}", "{ID_UPPER_BOUND}");
+        RelationalGenerator generator = RelationalGenerator.builder()
+                .ingestMode(scenario.getIngestMode())
+                .relationalSink(getRelationalSink())
+                .executionTimestampClock(fixedClock_2000_01_01)
+                .collectStatistics(true)
+                .optimizationFilters(Arrays.asList(filter))
+                .build();
+        GeneratorResult operations = generator.generateOperations(scenario.getDatasets());
+        verifyUnitemporalDeltaWithOptimizationFiltersPlaceHolder(operations);
+    }
+
+    public abstract void verifyUnitemporalDeltaWithOptimizationFiltersPlaceHolder(GeneratorResult operations);
 
     public abstract RelationalSink getRelationalSink();
 }

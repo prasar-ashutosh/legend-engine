@@ -136,6 +136,10 @@ class UnitemporalSnapshotPlanner extends UnitemporalPlanner
                 whereClauseForNotInSink.add(LogicalPlanUtils.getPartitionColumnsMatchCondition(mainDataset(), stagingDataset(), ingestMode().partitionFields().toArray(new String[0])));
             }
         }
+        if (options().optimizationFilters().isPresent())
+        {
+            whereClauseForNotInSink.addAll(LogicalPlanUtils.getOptimizationFilterConditions(mainDataset(), options().optimizationFilters().get()));
+        }
 
         Condition notInSinkCondition = Not.of(In.of(
             FieldValue.builder().datasetRef(stagingDataset().datasetReference()).fieldName(ingestMode().digestField()).build(),
@@ -213,6 +217,10 @@ class UnitemporalSnapshotPlanner extends UnitemporalPlanner
             {
                 whereClauseForPartition.add(LogicalPlanUtils.getPartitionColumnValueMatchInCondition(mainDataset(), ingestMode().partitionValuesByField()));
             }
+        }
+        if (options().optimizationFilters().isPresent())
+        {
+            whereClauseForPartition.addAll(LogicalPlanUtils.getOptimizationFilterConditions(mainDataset(), options().optimizationFilters().get()));
         }
 
         return UpdateAbstract.of(mainDataset(), values, And.of(whereClauseForPartition));

@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import org.finos.legend.engine.persistence.components.common.Datasets;
 import org.finos.legend.engine.persistence.components.common.Resources;
 import org.finos.legend.engine.persistence.components.common.StatisticName;
+import org.finos.legend.engine.persistence.components.common.OptimizationFilter;
 import org.finos.legend.engine.persistence.components.ingestmode.IngestMode;
 import org.finos.legend.engine.persistence.components.ingestmode.audit.AuditingVisitor;
 import org.finos.legend.engine.persistence.components.ingestmode.audit.DateTimeAuditingAbstract;
@@ -81,6 +82,8 @@ public abstract class Planner
         {
             return false;
         }
+
+        Optional<List<OptimizationFilter>> optimizationFilters();
     }
 
     private final Datasets datasets;

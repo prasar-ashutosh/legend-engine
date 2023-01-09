@@ -15,6 +15,7 @@
 package org.finos.legend.engine.persistence.components.relational.api;
 
 import org.finos.legend.engine.persistence.components.common.Datasets;
+import org.finos.legend.engine.persistence.components.common.OptimizationFilter;
 import org.finos.legend.engine.persistence.components.common.Resources;
 import org.finos.legend.engine.persistence.components.common.StatisticName;
 import org.finos.legend.engine.persistence.components.ingestmode.IngestMode;
@@ -94,6 +95,8 @@ public abstract class RelationalGeneratorAbstract
 
     public abstract Optional<Long> infiniteBatchIdValue();
 
+    public abstract Optional<List<OptimizationFilter>> optimizationFilters();
+
     //---------- FIELDS ----------
 
     public abstract IngestMode ingestMode();
@@ -107,6 +110,7 @@ public abstract class RelationalGeneratorAbstract
             .cleanupStagingData(cleanupStagingData())
             .collectStatistics(collectStatistics())
             .enableSchemaEvolution(enableSchemaEvolution())
+            .optimizationFilters(optimizationFilters())
             .build();
     }
 
