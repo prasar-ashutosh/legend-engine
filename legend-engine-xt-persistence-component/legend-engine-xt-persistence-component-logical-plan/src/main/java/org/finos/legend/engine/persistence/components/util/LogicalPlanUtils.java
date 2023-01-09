@@ -14,38 +14,16 @@
 
 package org.finos.legend.engine.persistence.components.util;
 
-import java.util.UUID;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.And;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.Condition;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.Equals;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.GreaterThanEqualTo;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.In;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.LessThanEqualTo;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.NotEquals;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.NotIn;
-import org.finos.legend.engine.persistence.components.logicalplan.conditions.Or;
+import org.finos.legend.engine.persistence.components.common.OptimizationFilter;
+import org.finos.legend.engine.persistence.components.logicalplan.conditions.*;
 import org.finos.legend.engine.persistence.components.logicalplan.datasets.DataType;
 import org.finos.legend.engine.persistence.components.logicalplan.datasets.Dataset;
 import org.finos.legend.engine.persistence.components.logicalplan.datasets.Field;
 import org.finos.legend.engine.persistence.components.logicalplan.datasets.Selection;
-import org.finos.legend.engine.persistence.components.logicalplan.values.All;
-import org.finos.legend.engine.persistence.components.logicalplan.values.Array;
-import org.finos.legend.engine.persistence.components.logicalplan.values.FieldValue;
-import org.finos.legend.engine.persistence.components.logicalplan.values.FunctionImpl;
-import org.finos.legend.engine.persistence.components.logicalplan.values.FunctionName;
-import org.finos.legend.engine.persistence.components.logicalplan.values.InfiniteBatchIdValue;
-import org.finos.legend.engine.persistence.components.logicalplan.values.ObjectValue;
-import org.finos.legend.engine.persistence.components.logicalplan.values.SelectValue;
-import org.finos.legend.engine.persistence.components.logicalplan.values.StringValue;
-import org.finos.legend.engine.persistence.components.logicalplan.values.Value;
+import org.finos.legend.engine.persistence.components.logicalplan.values.*;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
-import java.util.Optional;
 
 public class LogicalPlanUtils
 {
@@ -268,6 +246,35 @@ public class LogicalPlanUtils
         return Equals.of(
             FieldValue.builder().datasetRef(dataset.datasetReference()).fieldName(batchTimeField).build(),
             batchTime);
+    }
+
+    public static List<Condition> getOptimizationFilterConditions(Dataset dataset, List<OptimizationFilter> optimizationFilters)
+    {
+        List<Condition> optimizationConditions = new ArrayList<>();
+        for (OptimizationFilter filter: optimizationFilters)
+        {
+            Condition lowerBoundCondition =
+                    GreaterThanEqualTo.of(FieldValue.builder().datasetRef(dataset.datasetReference()).fieldName(filter.filterName()).build(),
+                            getBoundValue(filter.lowerBound()));
+            Condition upperBoundCondition =
+                    LessThanEqualTo.of(FieldValue.builder().datasetRef(dataset.datasetReference()).fieldName(filter.filterName()).build(),
+                            getBoundValue(filter.upperBound()));
+            optimizationConditions.add(lowerBoundCondition);
+            optimizationConditions.add(upperBoundCondition);
+        }
+        return optimizationConditions;
+    }
+
+    private static Value getBoundValue(Object value)
+    {
+        if (value instanceof String)
+        {
+            return StringValue.of(String.valueOf(value));
+        }
+        else
+        {
+            return ObjectValue.of(value);
+        }
     }
 
     // Used in Incremental

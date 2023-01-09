@@ -141,30 +141,22 @@ class UnitemporalDeltaPlanner extends UnitemporalPlanner
                 .addAllFields(LogicalPlanUtils.ALL_COLUMNS())
                 .build()));
 
-        Condition selectCondition;
+        List<Condition> selectConditions = new ArrayList<>();
+        if (dataSplitInRangeCondition.isPresent())
+        {
+            selectConditions.add(dataSplitInRangeCondition.get());
+        }
+        selectConditions.add(notExistsCondition);
+        if (options().optimizationFilters().isPresent())
+        {
+            selectConditions.addAll(LogicalPlanUtils.getOptimizationFilterConditions(mainDataset(), options().optimizationFilters().get()));
+        }
         if (deleteIndicatorField.isPresent())
         {
-            if (dataSplitInRangeCondition.isPresent())
-            {
-                selectCondition = And.builder().addConditions(dataSplitInRangeCondition.get(), notExistsCondition, deleteIndicatorIsNotSetCondition.get()).build();
-            }
-            else
-            {
-                selectCondition = And.builder().addConditions(notExistsCondition, deleteIndicatorIsNotSetCondition.get()).build();
-            }
-        }
-        else
-        {
-            if (dataSplitInRangeCondition.isPresent())
-            {
-                selectCondition = And.builder().addConditions(dataSplitInRangeCondition.get(), notExistsCondition).build();
-            }
-            else
-            {
-                selectCondition = notExistsCondition;
-            }
+            selectConditions.add(deleteIndicatorIsNotSetCondition.get());
         }
 
+        Condition selectCondition = And.of(selectConditions);
         Dataset selectStage = Selection.builder().source(stagingDataset()).condition(selectCondition).addAllFields(columnsToSelect).build();
         return Insert.of(mainDataset(), selectStage, columnsToInsert);
     }
@@ -209,7 +201,15 @@ class UnitemporalDeltaPlanner extends UnitemporalPlanner
                 .addAllFields(LogicalPlanUtils.ALL_COLUMNS())
                 .build());
 
-        Condition milestoningCondition = And.builder().addConditions(openRecordCondition, existsCondition).build();
+        List<Condition> milestoningConditions = new ArrayList<>();
+        milestoningConditions.add(openRecordCondition);
+        if (options().optimizationFilters().isPresent())
+        {
+            milestoningConditions.addAll(LogicalPlanUtils.getOptimizationFilterConditions(mainDataset(), options().optimizationFilters().get()));
+        }
+        milestoningConditions.add(existsCondition);
+
+        Condition milestoningCondition = And.of(milestoningConditions);
         return UpdateAbstract.of(mainDataset(), updatePairs, milestoningCondition);
     }
 

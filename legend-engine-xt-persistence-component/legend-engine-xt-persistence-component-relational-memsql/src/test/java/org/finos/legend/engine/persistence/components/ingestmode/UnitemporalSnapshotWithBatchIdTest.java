@@ -15,6 +15,7 @@
 package org.finos.legend.engine.persistence.components.ingestmode;
 
 import org.finos.legend.engine.persistence.components.common.Datasets;
+import org.finos.legend.engine.persistence.components.common.OptimizationFilter;
 import org.finos.legend.engine.persistence.components.common.StatisticName;
 import org.finos.legend.engine.persistence.components.ingestmode.transactionmilestoning.BatchId;
 import org.finos.legend.engine.persistence.components.logicalplan.datasets.Dataset;
@@ -337,5 +338,54 @@ public class UnitemporalSnapshotWithBatchIdTest extends IngestModeTest
         expectedSQL.add(expectedStagingCleanupQuery);
 
         assertIfListsAreSameIgnoringOrder(expectedSQL, postActionsSql);
+    }
+
+    @Test
+    void testGeneratePhysicalPlanWithOptimizationFilters()
+    {
+        UnitemporalSnapshot ingestMode = UnitemporalSnapshot.builder()
+                .digestField(digestField)
+                .transactionMilestoning(BatchId.builder()
+                        .batchIdInName(batchIdInField)
+                        .batchIdOutName(batchIdOutField)
+                        .build())
+                .build();
+
+        Datasets datasets = Datasets.of(mainTable, stagingTable);
+        OptimizationFilter filter = OptimizationFilter.of("id", "{LOWER_BOUND}", "{UPPER_BOUND}");
+        RelationalGenerator generator = RelationalGenerator.builder()
+                .ingestMode(ingestMode)
+                .relationalSink(MemSqlSink.get())
+                .executionTimestampClock(fixedClock_2000_01_01)
+                .optimizationFilters(Arrays.asList(filter))
+                .build();
+
+        GeneratorResult operations = generator.generateOperations(datasets);
+        List<String> preActionsSql = operations.preActionsSql();
+        List<String> milestoningSql = operations.ingestSql();
+        List<String> metadataIngestSql = operations.metadataIngestSql();
+
+        String expectedMilestoneQuery = "UPDATE `mydb`.`main` as sink SET " +
+                "sink.`batch_id_out` = (SELECT COALESCE(MAX(batch_metadata.`table_batch_id`),0)+1 FROM batch_metadata " +
+                "as batch_metadata WHERE batch_metadata.`table_name` = 'main')-1 " +
+                "WHERE (sink.`batch_id_out` = 999999999) AND " +
+                "(NOT (EXISTS (SELECT * FROM `mydb`.`staging` as stage WHERE " +
+                "((sink.`id` = stage.`id`) AND (sink.`name` = stage.`name`)) AND (sink.`digest` = stage.`digest`)))) " +
+                "AND (sink.`id` >= 1) AND (sink.`id` <= 2)";
+
+        String expectedUpsertQuery = "INSERT INTO `mydb`.`main` " +
+                "(`id`, `name`, `amount`, `biz_date`, `digest`, `batch_id_in`, `batch_id_out`) " +
+                "(SELECT stage.`id`,stage.`name`,stage.`amount`,stage.`biz_date`,stage.`digest`," +
+                "(SELECT COALESCE(MAX(batch_metadata.`table_batch_id`),0)+1 FROM batch_metadata as batch_metadata " +
+                "WHERE batch_metadata.`table_name` = 'main'),999999999 FROM `mydb`.`staging` as stage " +
+                "WHERE NOT (stage.`digest` IN (SELECT sink.`digest` FROM `mydb`.`main` as sink WHERE " +
+                "(sink.`batch_id_out` = 999999999) AND (sink.`id` >= 1) AND (sink.`id` <= 2))))";
+
+        Assertions.assertEquals(expectedMainTableBatchIdBasedCreateQuery, preActionsSql.get(0));
+        Assertions.assertEquals(expectedMetadataTableCreateQuery, preActionsSql.get(1));
+
+        Assertions.assertEquals(expectedMilestoneQuery, milestoningSql.get(0));
+        Assertions.assertEquals(expectedUpsertQuery, milestoningSql.get(1));
+        Assertions.assertEquals(expectedMetadataTableIngestQuery, metadataIngestSql.get(0));
     }
 }
