@@ -352,7 +352,7 @@ public class UnitemporalSnapshotWithBatchIdTest extends IngestModeTest
                 .build();
 
         Datasets datasets = Datasets.of(mainTable, stagingTable);
-        OptimizationFilter filter = OptimizationFilter.of("id", "{LOWER_BOUND}", "{UPPER_BOUND}");
+        OptimizationFilter filter = OptimizationFilter.of("id", 1, 2);
         RelationalGenerator generator = RelationalGenerator.builder()
                 .ingestMode(ingestMode)
                 .relationalSink(MemSqlSink.get())

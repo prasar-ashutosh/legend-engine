@@ -268,7 +268,8 @@ public class UnitemporalDeltaBatchIdBasedTest extends UnitmemporalDeltaBatchIdBa
     }
 
     @Override
-    public void verifyUnitemporalDeltaWithOptimizationFiltersPlaceHolder(GeneratorResult operations) {
+    public void verifyUnitemporalDeltaWithOptimizationFiltersPlaceHolder(GeneratorResult operations)
+    {
         List<String> preActionsSql = operations.preActionsSql();
         List<String> milestoningSql = operations.ingestSql();
         List<String> metadataIngestSql = operations.metadataIngestSql();
