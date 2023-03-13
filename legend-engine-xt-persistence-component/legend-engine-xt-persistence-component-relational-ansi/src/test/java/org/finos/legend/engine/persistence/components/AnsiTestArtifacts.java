@@ -121,6 +121,7 @@ public class AnsiTestArtifacts
             "\"name\" VARCHAR," +
             "\"amount\" DOUBLE," +
             "\"biz_date\" DATE," +
+            "\"digest\" VARCHAR," +
             "\"batch_update_time\" DATETIME," +
             "PRIMARY KEY (\"id\", \"name\"))";
 

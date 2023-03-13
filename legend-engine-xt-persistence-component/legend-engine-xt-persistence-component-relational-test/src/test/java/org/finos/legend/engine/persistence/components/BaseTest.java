@@ -310,6 +310,7 @@ public class BaseTest
             .addFields(name)
             .addFields(amount)
             .addFields(bizDate)
+            .addFields(digest)
             .addFields(batchUpdateTimeNonPK)
             .build();
 

@@ -71,7 +71,8 @@ public class DeriveMainDatasetSchemaFromStaging implements IngestModeVisitor<Dat
     @Override
     public Dataset visitAppendOnly(AppendOnlyAbstract appendOnly)
     {
-        if(appendOnly.digestField().isPresent()) {
+        if (appendOnly.digestField().isPresent())
+        {
             addDigestField(mainSchemaFields, appendOnly.digestField().get());
         }
         removeDataSplitField(appendOnly.dataSplitField());

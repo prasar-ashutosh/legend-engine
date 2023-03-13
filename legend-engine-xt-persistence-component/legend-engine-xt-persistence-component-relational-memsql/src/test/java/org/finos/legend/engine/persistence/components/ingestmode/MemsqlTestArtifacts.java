@@ -70,6 +70,7 @@ public class MemsqlTestArtifacts
             "`name` VARCHAR(256)," +
             "`amount` DOUBLE," +
             "`biz_date` DATE," +
+            "`digest` VARCHAR(256)," +
             "`batch_update_time` DATETIME," +
             "PRIMARY KEY (`id`, `name`))";
 
