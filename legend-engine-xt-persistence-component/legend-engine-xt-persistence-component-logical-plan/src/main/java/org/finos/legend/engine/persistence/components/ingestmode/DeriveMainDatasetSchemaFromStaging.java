@@ -71,6 +71,9 @@ public class DeriveMainDatasetSchemaFromStaging implements IngestModeVisitor<Dat
     @Override
     public Dataset visitAppendOnly(AppendOnlyAbstract appendOnly)
     {
+        if(appendOnly.digestField().isPresent()) {
+            addDigestField(mainSchemaFields, appendOnly.digestField().get());
+        }
         removeDataSplitField(appendOnly.dataSplitField());
         boolean isAuditingFieldPK = appendOnly.deduplicationStrategy().accept(new DeriveAuditingFieldPKForAppendOnly(appendOnly.dataSplitField().isPresent()));
         appendOnly.auditing().accept(new EnrichSchemaWithAuditing(mainSchemaFields, isAuditingFieldPK));
@@ -89,6 +92,7 @@ public class DeriveMainDatasetSchemaFromStaging implements IngestModeVisitor<Dat
     @Override
     public Dataset visitNontemporalDelta(NontemporalDeltaAbstract nontemporalDelta)
     {
+        addDigestField(mainSchemaFields, nontemporalDelta.digestField());
         removeDataSplitField(nontemporalDelta.dataSplitField());
         nontemporalDelta.mergeStrategy().accept(new EnrichSchemaWithMergeStrategy(mainSchemaFields));
         nontemporalDelta.auditing().accept(new EnrichSchemaWithAuditing(mainSchemaFields, true));
@@ -98,6 +102,7 @@ public class DeriveMainDatasetSchemaFromStaging implements IngestModeVisitor<Dat
     @Override
     public Dataset visitUnitemporalSnapshot(UnitemporalSnapshotAbstract unitemporalSnapshot)
     {
+        addDigestField(mainSchemaFields, unitemporalSnapshot.digestField());
         unitemporalSnapshot.transactionMilestoning().accept(new EnrichSchemaWithTransactionMilestoning(mainSchemaFields));
         return mainDatasetDefinitionBuilder.schema(mainSchemaDefinitionBuilder.addAllFields(mainSchemaFields).build()).build();
     }
@@ -105,6 +110,7 @@ public class DeriveMainDatasetSchemaFromStaging implements IngestModeVisitor<Dat
     @Override
     public Dataset visitUnitemporalDelta(UnitemporalDeltaAbstract unitemporalDelta)
     {
+        addDigestField(mainSchemaFields, unitemporalDelta.digestField());
         removeDataSplitField(unitemporalDelta.dataSplitField());
         unitemporalDelta.mergeStrategy().accept(new EnrichSchemaWithMergeStrategy(mainSchemaFields));
         unitemporalDelta.transactionMilestoning().accept(new EnrichSchemaWithTransactionMilestoning(mainSchemaFields));
@@ -114,6 +120,7 @@ public class DeriveMainDatasetSchemaFromStaging implements IngestModeVisitor<Dat
     @Override
     public Dataset visitBitemporalSnapshot(BitemporalSnapshotAbstract bitemporalSnapshot)
     {
+        addDigestField(mainSchemaFields, bitemporalSnapshot.digestField());
         bitemporalSnapshot.transactionMilestoning().accept(new EnrichSchemaWithTransactionMilestoning(mainSchemaFields));
         bitemporalSnapshot.validityMilestoning().accept(new EnrichSchemaWithValidityMilestoning(mainSchemaFields));
         return mainDatasetDefinitionBuilder.schema(mainSchemaDefinitionBuilder.addAllFields(mainSchemaFields).build()).build();
@@ -122,11 +129,11 @@ public class DeriveMainDatasetSchemaFromStaging implements IngestModeVisitor<Dat
     @Override
     public Dataset visitBitemporalDelta(BitemporalDeltaAbstract bitemporalDelta)
     {
+        addDigestField(mainSchemaFields, bitemporalDelta.digestField());
         removeDataSplitField(bitemporalDelta.dataSplitField());
         bitemporalDelta.mergeStrategy().accept(new EnrichSchemaWithMergeStrategy(mainSchemaFields));
         bitemporalDelta.transactionMilestoning().accept(new EnrichSchemaWithTransactionMilestoning(mainSchemaFields));
         bitemporalDelta.validityMilestoning().accept(new EnrichSchemaWithValidityMilestoning(mainSchemaFields));
-        // DeduplicationStrategy
         return mainDatasetDefinitionBuilder.schema(mainSchemaDefinitionBuilder.addAllFields(mainSchemaFields).build()).build();
     }
 
@@ -135,6 +142,19 @@ public class DeriveMainDatasetSchemaFromStaging implements IngestModeVisitor<Dat
         if (dataSplitField.isPresent())
         {
             mainSchemaFields.removeIf(field -> field.name().equals(dataSplitField.get()));
+        }
+    }
+
+    private void addDigestField(List<Field> mainSchemaFields, String digestFieldName)
+    {
+        // DIGEST field addition
+        if (!mainSchemaFields.stream().anyMatch(field -> field.name().equals(digestFieldName)))
+        {
+            Field digest = Field.builder()
+                    .name(digestFieldName)
+                    .type(FieldType.of(DataType.STRING, Optional.empty(), Optional.empty()))
+                    .build();
+            mainSchemaFields.add(digest);
         }
     }
 
