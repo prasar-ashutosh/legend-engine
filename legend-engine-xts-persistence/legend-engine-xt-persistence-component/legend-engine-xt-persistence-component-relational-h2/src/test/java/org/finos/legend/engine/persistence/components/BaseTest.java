@@ -172,7 +172,17 @@ public class BaseTest
                 .schemaEvolutionCapabilitySet(userCapabilitySet)
                 .build();
 
-        IngestorResult result = ingestor.performFullIngestion(JdbcConnection.of(h2Sink.connection()), datasets);
+//        IngestorResult result = ingestor.performFullIngestion(JdbcConnection.of(h2Sink.connection()), datasets);
+        Executor executor = ingestor.init(JdbcConnection.of(h2Sink.connection()));
+
+        datasets = ingestor.create(datasets);
+        datasets = ingestor.evolve(datasets);
+
+        executor.begin();
+        IngestorResult result = ingestor.ingest(datasets);
+        // Do more stuff if needed
+        executor.commit();
+
         Map<StatisticName, Object> actualStats = result.statisticByName();
 
         // Verify the database data
@@ -268,13 +278,14 @@ public class BaseTest
                 .caseConversion(CaseConversion.TO_UPPER)
                 .build();
 
-        Executor executor = ingestor.initExecutor(JdbcConnection.of(h2Sink.connection()));
-        datasets = ingestor.initDatasets(datasets);
-        ingestor.create();
-        ingestor.evolve();
+        Executor executor = ingestor.init(JdbcConnection.of(h2Sink.connection()));
+
+        datasets = ingestor.create(datasets);
+        datasets = ingestor.evolve(datasets);
+
         executor.begin();
-        IngestorResult result = ingestor.ingest();
-        // Do more stuff
+        IngestorResult result = ingestor.ingest(datasets);
+        // Do more stuff if needed
         executor.commit();
 
         Map<StatisticName, Object> actualStats = result.statisticByName();

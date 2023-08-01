@@ -41,6 +41,7 @@ import org.finos.legend.engine.persistence.components.logicalplan.datasets.Selec
 import org.finos.legend.engine.persistence.components.logicalplan.datasets.DatasetReference;
 import org.finos.legend.engine.persistence.components.logicalplan.datasets.ExternalDatasetReference;
 import org.finos.legend.engine.persistence.components.logicalplan.datasets.Field;
+import org.finos.legend.engine.persistence.components.ingestmode.TempDatasetsEnricher;
 import org.finos.legend.engine.persistence.components.logicalplan.values.StringValue;
 import org.finos.legend.engine.persistence.components.planner.Planner;
 import org.finos.legend.engine.persistence.components.planner.PlannerOptions;
@@ -194,47 +195,38 @@ public abstract class RelationalIngestorAbstract
     - Initializes executor
     - @return : The methods returns the Executor to the caller enabling them to handle their own transaction
     */
-    public Executor initExecutor(RelationalConnection connection)
+    public Executor init(RelationalConnection connection)
     {
         this.executor = relationalSink().getRelationalExecutor(connection);
         return executor;
     }
 
     /*
-    - Initializes Datasets
-    - @return : The methods enriches the datasets and returns that to the user
-    - User is expected to invoke init before calling create/evolve/ingest
-    */
-    public Datasets initDatasets(Datasets datasets)
-    {
-        init(datasets);
-        return enrichedDatasets;
-    }
-
-    /*
     - Create Datasets
     */
-    public void create()
+    public Datasets create(Datasets datasets)
     {
-        validate();
+        init(datasets);
         createAllDatasets();
+        return this.enrichedDatasets;
     }
 
     /*
     - Evolve Schema of Target table based on schema changes in staging table
     */
-    public void evolve()
+    public Datasets evolve(Datasets datasets)
     {
-        validate();
+        init(datasets);
         evolveSchema();
+        return this.enrichedDatasets;
     }
 
     /*
     - Perform ingestion from staging to main dataset based on the Ingest mode, executes in current transaction
     */
-    public IngestorResult ingest()
+    public IngestorResult ingest(Datasets datasets)
     {
-        validate();
+        init(datasets);
         return ingest(Arrays.asList()).stream().findFirst().orElseThrow(IllegalStateException::new);
     }
 
@@ -316,22 +308,10 @@ public abstract class RelationalIngestorAbstract
         }
     }
 
-    private void validate()
-    {
-        if (this.executor == null)
-        {
-            throw new IllegalStateException("Executor not initialized, invoke initExecutor first");
-        }
-        if (this.enrichedDatasets == null)
-        {
-            throw new IllegalStateException("Datasets not initialized, invoke initDatasets first");
-        }
-    }
-
     private List<IngestorResult> performFullIngestion(RelationalConnection connection, Datasets datasets, List<DataSplitRange> dataSplitRanges)
     {
         // 1. init
-        initExecutor(connection);
+        init(connection);
         init(datasets);
 
         // 2. Create Datasets
@@ -405,7 +385,10 @@ public abstract class RelationalIngestorAbstract
         // 6. Add Optimization Columns if needed
         enrichedIngestMode = enrichedIngestMode.accept(new IngestModeOptimizationColumnHandler(enrichedDatasets));
 
-        // 7. generate sql plans
+        // 7. Enrich temp Datasets
+        enrichedDatasets = enrichedIngestMode.accept(new TempDatasetsEnricher(enrichedDatasets));
+
+        // 8. generate sql plans
         RelationalGenerator generator = RelationalGenerator.builder()
                 .ingestMode(enrichedIngestMode)
                 .relationalSink(relationalSink())
@@ -524,7 +507,7 @@ public abstract class RelationalIngestorAbstract
         Datasets updatedDatasets = datasets.withStagingDataset(extractedStagingDatasetDefinition);
 
         // Create staging table
-        LogicalPlan tableCreationPlan = LogicalPlanFactory.getDatasetCreationPlan(extractedStagingDatasetDefinition, false);
+        LogicalPlan tableCreationPlan = LogicalPlanFactory.getDatasetCreationPlan(extractedStagingDatasetDefinition, true);
         SqlPlan tableCreationPhysicalPlan = transformer.generatePhysicalPlan(tableCreationPlan);
         executor.executePhysicalPlan(tableCreationPhysicalPlan);
 
