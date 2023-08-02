@@ -57,33 +57,33 @@ public class MultiTableIngestionTest extends BaseTest
                 .addFields(digest)
                 .build();
 
+    DatasetDefinition stagingTable1 = DatasetDefinition.builder()
+            .group(testSchemaName)
+            .name("staging1")
+            .schema(getStagingSchema())
+            .build();
+
+    DatasetDefinition stagingTable2 = DatasetDefinition.builder()
+            .group(testSchemaName)
+            .name("staging2")
+            .schema(stagingDataset2Schema)
+            .build();
+
+    Dataset mainTable1 = DatasetDefinition.builder()
+            .group(testSchemaName)
+            .name("main1")
+            .schema(SchemaDefinition.builder().build())
+            .build();
+
+    Dataset mainTable2 = DatasetDefinition.builder()
+            .group(testSchemaName)
+            .name("main2")
+            .schema(SchemaDefinition.builder().build())
+            .build();
+
     @Test
     public void testMultiTableIngestionSuccessCase() throws Exception
     {
-        DatasetDefinition stagingTable1 = DatasetDefinition.builder()
-                .group(testSchemaName)
-                .name("staging1")
-                .schema(getStagingSchema())
-                .build();
-
-        DatasetDefinition stagingTable2 = DatasetDefinition.builder()
-                .group(testSchemaName)
-                .name("staging2")
-                .schema(stagingDataset2Schema)
-                .build();
-
-        Dataset mainTable1 = DatasetDefinition.builder()
-                .group(testSchemaName)
-                .name("main1")
-                .schema(SchemaDefinition.builder().build())
-                .build();
-
-        Dataset mainTable2 = DatasetDefinition.builder()
-                .group(testSchemaName)
-                .name("main2")
-                .schema(SchemaDefinition.builder().build())
-                .build();
-
         // Create staging tables
         createStagingTable(stagingTable1);
         createStagingTable(stagingTable2);
@@ -157,6 +157,10 @@ public class MultiTableIngestionTest extends BaseTest
         result = ingestMultiTables(executor, ingestor, datasets1, datasets2);
         verifyResults(3, datsetSchema1, expectedDataset1Path, "main1", result.get(0), expectedStats);
         verifyResults(3, datsetSchema2, expectedDataset2Path, "main2", result.get(1), expectedStats);
+
+        // Verify if additional query data was written
+        List<Map<String, Object>> tableData = h2Sink.executeQuery(String.format("select * from batch_metadata where table_name = 'new_test_table'"));
+        Assertions.assertEquals(3, tableData.size());
     }
 
     private List<IngestorResult> ingestMultiTables(Executor executor, RelationalIngestor ingestor, Datasets... allDatasets)
@@ -170,8 +174,10 @@ public class MultiTableIngestionTest extends BaseTest
                 IngestorResult result = ingestor.ingest(datasets);
                 multiTableIngestionResult.add(result);
             }
-            executor.commit();
 
+            // Show how we can add more to same tx
+            executor.getRelationalExecutionHelper().executeStatement("insert into batch_metadata(table_name, batch_status) values ('new_test_table', 'test_tx')");
+            executor.commit();
         }
         catch (Exception e)
         {
@@ -184,6 +190,92 @@ public class MultiTableIngestionTest extends BaseTest
         }
         return multiTableIngestionResult;
     }
+
+    @Test
+    public void testMultiTableIngestionWithFailedTx() throws Exception
+    {
+        // Create staging tables
+        createStagingTable(stagingTable1);
+        createStagingTable(stagingTable2);
+
+        Datasets datasets1 = Datasets.of(mainTable1, stagingTable1);
+        Datasets datasets2 = Datasets.of(mainTable2, stagingTable2);
+
+        UnitemporalDelta ingestMode = org.finos.legend.engine.persistence.components.ingestmode.UnitemporalDelta.builder()
+                .digestField(digestName)
+                .transactionMilestoning(BatchIdAndDateTime.builder()
+                        .batchIdInName(batchIdInName)
+                        .batchIdOutName(batchIdOutName)
+                        .dateTimeInName(batchTimeInName)
+                        .dateTimeOutName(batchTimeOutName)
+                        .build())
+                .build();
+        RelationalIngestor ingestor = RelationalIngestor.builder()
+                .ingestMode(ingestMode)
+                .relationalSink(H2Sink.get())
+                .executionTimestampClock(fixedClock_2000_01_01)
+                .cleanupStagingData(true)
+                .collectStatistics(true)
+                .enableSchemaEvolution(false)
+                .build();
+
+        Executor executor = ingestor.init(JdbcConnection.of(h2Sink.connection()));
+
+        // Create Main tables
+        datasets1 = ingestor.create(datasets1);
+        datasets2 = ingestor.create(datasets2);
+
+        // Pass 1:
+        String dataset1Path = basePathForInput + "multi_table_ingestion/staging_dataset1_pass1.csv";
+        String dataset2Path = basePathForInput + "multi_table_ingestion/staging_dataset2_pass1.csv";
+
+        loadStagingDataset1(dataset1Path);
+        loadStagingDataset2(dataset2Path);
+        try
+        {
+            List<IngestorResult> result = ingestMultiTablesWithBadQuery(executor, ingestor, datasets1, datasets2);
+            Assertions.fail("Should not reach here");
+        }
+        catch (Exception e)
+        {
+            Assertions.assertTrue(e.getMessage().contains("Column \"unknown_column\" not found"));
+            // Verify that no data was written in the two datasets
+            List<Map<String, Object>> tableData1 = h2Sink.executeQuery(String.format("select * from \"TEST\".\"main1\""));
+            List<Map<String, Object>> tableData2 = h2Sink.executeQuery(String.format("select * from \"TEST\".\"main2\""));
+            Assertions.assertTrue(tableData1.isEmpty());
+            Assertions.assertTrue(tableData2.isEmpty());
+        }
+    }
+
+
+        private List<IngestorResult> ingestMultiTablesWithBadQuery(Executor executor, RelationalIngestor ingestor, Datasets... allDatasets)
+    {
+        List<IngestorResult> multiTableIngestionResult = new ArrayList<>();
+        try
+        {
+            executor.begin();
+            for (Datasets datasets: allDatasets)
+            {
+                IngestorResult result = ingestor.ingest(datasets);
+                multiTableIngestionResult.add(result);
+            }
+
+            // A bad query should revert the complete transaction
+            executor.getRelationalExecutionHelper().executeStatement("insert into batch_metadata(table_name, batch_status, unknown_column) values ('new_test_table', 'test_tx', 'XYZ')");
+            executor.commit();
+        }
+        catch (Exception e)
+        {
+            executor.revert();
+            throw e;
+        }
+        finally
+        {
+            executor.close();
+        }
+        return multiTableIngestionResult;
+    }
+
 
     private void loadStagingDataset1(String path) throws Exception
     {
