@@ -172,16 +172,7 @@ public class BaseTest
                 .schemaEvolutionCapabilitySet(userCapabilitySet)
                 .build();
 
-//        IngestorResult result = ingestor.performFullIngestion(JdbcConnection.of(h2Sink.connection()), datasets);
-        Executor executor = ingestor.init(JdbcConnection.of(h2Sink.connection()));
-
-        datasets = ingestor.create(datasets);
-        datasets = ingestor.evolve(datasets);
-
-        executor.begin();
-        IngestorResult result = ingestor.ingest(datasets);
-        // Do more stuff if needed
-        executor.commit();
+        IngestorResult result = ingestor.performFullIngestion(JdbcConnection.of(h2Sink.connection()), datasets);
 
         Map<StatisticName, Object> actualStats = result.statisticByName();
 
