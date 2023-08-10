@@ -401,7 +401,7 @@ public abstract class RelationalIngestorAbstract
                 .executionTimestampClock(executionTimestampClock())
                 .batchStartTimestampPattern(BATCH_START_TS_PATTERN)
                 .batchEndTimestampPattern(BATCH_END_TS_PATTERN)
-                .batchIdPattern(BATCH_ID_PATTERN)
+//                .batchIdPattern(BATCH_ID_PATTERN)
                 .build();
 
         planner = Planners.get(enrichedDatasets, enrichedIngestMode, plannerOptions());

@@ -85,10 +85,13 @@ public class JdbcHelper implements RelationalExecutionHelper
     {
         try
         {
+            long sleepTime = Math.round(Math.random()* 100);
+            Thread.sleep(sleepTime);
             this.transactionManager = new JdbcTransactionManager(connection);
             this.transactionManager.beginTransaction();
+            System.out.println(String.format("%s %s : Starting Tx", System.currentTimeMillis(), Thread.currentThread().getName()));
         }
-        catch (SQLException e)
+        catch (Exception e)
         {
             throw new RuntimeException(e);
         }
@@ -101,9 +104,12 @@ public class JdbcHelper implements RelationalExecutionHelper
         {
             try
             {
+                long sleepTime = Math.round(Math.random()* 100);
+                Thread.sleep(sleepTime);
                 this.transactionManager.commitTransaction();
+                System.out.println(String.format("%s %s : Commit Tx", System.currentTimeMillis(), Thread.currentThread().getName()));
             }
-            catch (SQLException e)
+            catch (Exception e)
             {
                 throw new RuntimeException(e);
             }

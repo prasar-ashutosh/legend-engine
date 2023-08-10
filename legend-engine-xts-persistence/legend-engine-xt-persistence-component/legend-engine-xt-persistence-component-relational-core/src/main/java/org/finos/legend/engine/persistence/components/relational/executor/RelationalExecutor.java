@@ -51,7 +51,15 @@ public class RelationalExecutor implements Executor<SqlGen, TabularData, SqlPlan
         List<String> sqlList = physicalPlan.getSqlList();
         for (String sql : sqlList)
         {
+            try {
+                long sleepTime = Math.round(Math.random()* 10);
+                Thread.sleep(sleepTime);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
             String enrichedSql = getEnrichedSql(placeholderKeyValues, sql);
+            System.out.println(String.format("%s %s : Running Sql: %s", System.currentTimeMillis(), Thread.currentThread().getName(), enrichedSql));
+
             relationalExecutionHelper.executeStatement(enrichedSql);
         }
     }
