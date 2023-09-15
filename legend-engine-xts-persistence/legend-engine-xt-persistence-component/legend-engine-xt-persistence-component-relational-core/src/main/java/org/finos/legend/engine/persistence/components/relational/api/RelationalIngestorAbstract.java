@@ -62,6 +62,8 @@ import org.immutables.value.Value.Default;
 import org.immutables.value.Value.Derived;
 import org.immutables.value.Value.Immutable;
 import org.immutables.value.Value.Style;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Date;
 import java.time.Clock;
@@ -98,6 +100,8 @@ public abstract class RelationalIngestorAbstract
 
     public static final String BATCH_START_TS_PATTERN = "{BATCH_START_TIMESTAMP_PLACEHOLDER}";
     private static final String BATCH_END_TS_PATTERN = "{BATCH_END_TIMESTAMP_PLACEHOLDER}";
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(RelationalIngestor.class);
 
     //---------- FLAGS ----------
 
@@ -204,6 +208,7 @@ public abstract class RelationalIngestorAbstract
     */
     public Executor init(RelationalConnection connection)
     {
+        LOGGER.info("Invoked init method, will initialize the executor");
         this.executor = relationalSink().getRelationalExecutor(connection);
         return executor;
     }
@@ -213,6 +218,7 @@ public abstract class RelationalIngestorAbstract
     */
     public Datasets create(Datasets datasets)
     {
+        LOGGER.info("Invoked create method, will create the datasets");
         init(datasets);
         createAllDatasets();
         initializeLock();
@@ -224,6 +230,7 @@ public abstract class RelationalIngestorAbstract
     */
     public Datasets evolve(Datasets datasets)
     {
+        LOGGER.info("Invoked evolve method, will evolve the schema");
         init(datasets);
         evolveSchema();
         return this.enrichedDatasets;
@@ -234,8 +241,11 @@ public abstract class RelationalIngestorAbstract
     */
     public IngestorResult ingest(Datasets datasets)
     {
+        LOGGER.info("Invoked ingest method, will perform the ingestion");
         init(datasets);
-        return ingest(Arrays.asList()).stream().findFirst().orElseThrow(IllegalStateException::new);
+        IngestorResult result = ingest(Arrays.asList()).stream().findFirst().orElseThrow(IllegalStateException::new);
+        LOGGER.info("Ingestion completed");
+        return result;
     }
 
     /*
@@ -243,6 +253,7 @@ public abstract class RelationalIngestorAbstract
     */
     public Datasets cleanUp(Datasets datasets)
     {
+        LOGGER.info("Invoked cleanUp method, will delete the temporary resources");
         init(datasets);
         postCleanup();
         return this.enrichedDatasets;
@@ -259,6 +270,7 @@ public abstract class RelationalIngestorAbstract
      */
     public IngestorResult performFullIngestion(RelationalConnection connection, Datasets datasets)
     {
+        LOGGER.info("Invoked performFullIngestion method");
         return performFullIngestion(connection, datasets, null).stream().findFirst().orElseThrow(IllegalStateException::new);
     }
 
@@ -272,6 +284,7 @@ public abstract class RelationalIngestorAbstract
     */
     public List<IngestorResult> performFullIngestionWithDataSplits(RelationalConnection connection, Datasets datasets, List<DataSplitRange> dataSplitRanges)
     {
+        LOGGER.info("Invoked performFullIngestionWithDataSplits method");
         // Provide the default dataSplit ranges if missing
         if (dataSplitRanges == null || dataSplitRanges.isEmpty())
         {
@@ -285,6 +298,7 @@ public abstract class RelationalIngestorAbstract
     */
     public List<DatasetFilter> getLatestStagingFilters(RelationalConnection connection, Datasets datasets) throws JsonProcessingException
     {
+        LOGGER.info("Invoked getLatestStagingFilters method");
         MetadataDataset metadataDataset = datasets.metadataDataset().isPresent()
                 ? datasets.metadataDataset().get()
                 : MetadataDataset.builder().build();
@@ -305,6 +319,7 @@ public abstract class RelationalIngestorAbstract
     {
         if (mainDatasetExists && generatorResult.schemaEvolutionDataset().isPresent())
         {
+            LOGGER.info("SchemaEvolution is enabled, evolving the schema");
             enrichedDatasets = enrichedDatasets.withMainDataset(generatorResult.schemaEvolutionDataset().get());
             generatorResult.schemaEvolutionSqlPlan().ifPresent(executor::executePhysicalPlan);
         }
@@ -312,6 +327,7 @@ public abstract class RelationalIngestorAbstract
 
     private void createAllDatasets()
     {
+        LOGGER.info("Creating the datasets");
         executor.executePhysicalPlan(generatorResult.preActionsSqlPlan());
     }
 
@@ -319,6 +335,7 @@ public abstract class RelationalIngestorAbstract
     {
         if (enableConcurrentSafety())
         {
+            LOGGER.info("Concurrent safety is enabled, Initializing lock");
             Map<String, String> placeHolderKeyValues = new HashMap<>();
             placeHolderKeyValues.put(BATCH_START_TS_PATTERN, LocalDateTime.now(executionTimestampClock()).format(DATE_TIME_FORMATTER));
             try
@@ -337,6 +354,7 @@ public abstract class RelationalIngestorAbstract
     {
         if (enableConcurrentSafety())
         {
+            LOGGER.info("Concurrent safety is enabled, Acquiring lock");
             Map<String, String> placeHolderKeyValues = new HashMap<>();
             placeHolderKeyValues.put(BATCH_START_TS_PATTERN, LocalDateTime.now(executionTimestampClock()).format(DATE_TIME_FORMATTER));
             executor.executePhysicalPlan(generatorResult.acquireLockSqlPlan().orElseThrow(IllegalStateException::new), placeHolderKeyValues);
@@ -347,6 +365,7 @@ public abstract class RelationalIngestorAbstract
     {
         if (generatorResult.postCleanupSqlPlan().isPresent())
         {
+            LOGGER.info("Executing Post Clean up");
             executor.executePhysicalPlan(generatorResult.postCleanupSqlPlan().get());
         }
     }
@@ -355,10 +374,12 @@ public abstract class RelationalIngestorAbstract
     {
         if (enrichedIngestMode instanceof BulkLoad)
         {
+            LOGGER.info(String.format(String.format("Starting Bulk Load")));
             return performBulkLoad(enrichedDatasets, transformer, planner, executor, generatorResult, enrichedIngestMode);
         }
         else
         {
+            LOGGER.info(String.format(String.format("Starting Ingestion with IngestMode: {%s}", enrichedIngestMode.getClass().getSimpleName())));
             return performIngestion(enrichedDatasets, transformer, planner, executor, generatorResult, dataSplitRanges, enrichedIngestMode);
         }
     }
@@ -399,13 +420,14 @@ public abstract class RelationalIngestorAbstract
 
         // post Cleanup
         postCleanup();
-
+        LOGGER.info("Ingestion completed");
         return result;
     }
 
 
     private void init(Datasets datasets)
     {
+        LOGGER.info("Initializing Datasets");
         // Validation: init(Connection) must have been invoked
         if (this.executor == null)
         {
@@ -428,7 +450,9 @@ public abstract class RelationalIngestorAbstract
         // 4. Check if staging dataset is empty
         if (ingestMode().accept(IngestModeVisitors.NEED_TO_CHECK_STAGING_EMPTY) && executor.datasetExists(enrichedDatasets.stagingDataset()))
         {
-            resourcesBuilder.stagingDataSetEmpty(datasetEmpty(enrichedDatasets.stagingDataset(), transformer, executor));
+            boolean isStagingDatasetEmpty = datasetEmpty(enrichedDatasets.stagingDataset(), transformer, executor);
+            LOGGER.info(String.format("Checking if staging dataset is empty : {%s}", isStagingDatasetEmpty));
+            resourcesBuilder.stagingDataSetEmpty(isStagingDatasetEmpty);
         }
 
         // 5. Check if main Dataset Exists
@@ -541,6 +565,7 @@ public abstract class RelationalIngestorAbstract
 
     private Datasets importExternalDataset(Datasets datasets)
     {
+        LOGGER.info("Importing External Dataset");
         ExternalDatasetReference externalDatasetReference = (ExternalDatasetReference) datasets.stagingDataset();
         DatasetReference mainDataSetReference = datasets.mainDataset().datasetReference();
 
@@ -625,6 +650,7 @@ public abstract class RelationalIngestorAbstract
         Optional<Map<OptimizationFilter, Pair<Object, Object>>> optimizationFilters = getOptimizationFilterBounds(datasets, executor, transformer, ingestMode);
         if (nextBatchId.isPresent())
         {
+            LOGGER.info(String.format(String.format("Obtained the next Batch id: %s", nextBatchId.get())));
             placeHolderKeyValues.put(BATCH_ID_PATTERN, nextBatchId.get().toString());
         }
         if (optimizationFilters.isPresent())

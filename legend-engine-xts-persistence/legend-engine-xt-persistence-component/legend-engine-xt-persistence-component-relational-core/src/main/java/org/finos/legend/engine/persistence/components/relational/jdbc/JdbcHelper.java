@@ -416,6 +416,7 @@ public class JdbcHelper implements RelationalExecutionHelper
             {
                 for (String sql : sqls)
                 {
+                    LOGGER.debug(String.format(String.format("Executing SQL : {%s}", sql)));
                     this.transactionManager.executeInCurrentTransaction(sql);
                 }
             }
@@ -433,6 +434,7 @@ public class JdbcHelper implements RelationalExecutionHelper
                 txManager.beginTransaction();
                 for (String sql : sqls)
                 {
+                    LOGGER.debug(String.format(String.format("Executing SQL : {%s}", sql)));
                     txManager.executeInCurrentTransaction(sql);
                 }
                 txManager.commitTransaction();
@@ -473,6 +475,7 @@ public class JdbcHelper implements RelationalExecutionHelper
     @Override
     public List<Map<String, Object>> executeQuery(String sql)
     {
+        LOGGER.debug(String.format(String.format("Executing SQL : {%s}", sql)));
         if (this.transactionManager != null)
         {
             return this.transactionManager.convertResultSetToList(sql);
