@@ -64,7 +64,7 @@ public class BaseTestUtils
         .addFields(colBoolean)
         .build();
 
-    public static SchemaDefinition schemaWithAllColumnsWithShardColumnStore = SchemaDefinition.builder()
+    public static SchemaDefinition schemaWithAllColumnsWithShardsAndColumnStore = SchemaDefinition.builder()
             .addFields(colInt)
             .addFields(colInteger)
             .addFields(colBigint)
@@ -72,14 +72,23 @@ public class BaseTestUtils
             .shardSpecification(ShardSpecification.builder().addShardKeys(colInt).build())
             .build();
 
-    public static SchemaDefinition schemaWithColumnStoreWithoutShard = SchemaDefinition.builder()
+    public static SchemaDefinition schemaWithColumnStoreUnsharded = SchemaDefinition.builder()
             .addFields(colInt)
             .addFields(colInteger)
             .addFields(colBigint)
             .columnStoreSpecification(ColumnStoreSpecification.builder().columnStore(true).addColumnStoreKeys(colInt).build())
+            .shardSpecification(ShardSpecification.builder().isSharded(false).build())
             .build();
 
-    public static SchemaDefinition schemaWithRowStoreWithoutShard = SchemaDefinition.builder()
+    public static SchemaDefinition schemaWithColumnStoreWithKeylessSharding = SchemaDefinition.builder()
+            .addFields(colInt)
+            .addFields(colInteger)
+            .addFields(colBigint)
+            .columnStoreSpecification(ColumnStoreSpecification.builder().columnStore(true).addColumnStoreKeys(colInt).build())
+            .shardSpecification(ShardSpecification.builder().isSharded(true).build())
+            .build();
+
+    public static SchemaDefinition schemaWithRowStoreWithoutShardDefinition = SchemaDefinition.builder()
             .addFields(colInt)
             .addFields(colInteger)
             .addFields(colBigint)
