@@ -35,6 +35,8 @@ import org.finos.legend.engine.persistence.components.relational.SqlPlan;
 import org.finos.legend.engine.persistence.components.relational.sql.TabularData;
 import org.finos.legend.engine.persistence.components.relational.sqldom.SqlGen;
 import org.finos.legend.engine.persistence.components.relational.transformer.RelationalTransformer;
+import org.finos.legend.engine.persistence.components.schemaevolution.SchemaEvolution;
+import org.finos.legend.engine.persistence.components.schemaevolution.SchemaEvolutionResult;
 import org.finos.legend.engine.persistence.components.transformer.TransformOptions;
 import org.finos.legend.engine.persistence.components.transformer.Transformer;
 import org.finos.legend.engine.persistence.components.util.LogicalPlanUtils;
@@ -108,6 +110,12 @@ public abstract class RelationalIngestorAbstract
     public boolean enableSchemaEvolution()
     {
         return false;
+    }
+
+    @Default
+    public boolean enableSchemaEvolutionForMetadataDatasets()
+    {
+        return true;
     }
 
     @Default
@@ -187,6 +195,7 @@ public abstract class RelationalIngestorAbstract
     boolean mainDatasetExists;
     private Planner planner;
 
+    private boolean datasetsInitialized = false;
 
     // ---------- API ----------
 
@@ -204,9 +213,9 @@ public abstract class RelationalIngestorAbstract
     - Initializes executor
     - @return : The methods returns the Executor to the caller enabling them to handle their own transaction
     */
-    public Executor init(RelationalConnection connection)
+    public Executor initExecutor(RelationalConnection connection)
     {
-        LOGGER.info("Invoked init method, will initialize the executor");
+        LOGGER.info("Invoked initExecutor method, will initialize the executor");
         this.executor = relationalSink().getRelationalExecutor(connection);
         return executor;
     }
@@ -214,42 +223,52 @@ public abstract class RelationalIngestorAbstract
     /*
     - Initializes executor
     */
-    public void init(Executor executor)
+    public void initExecutor(Executor executor)
     {
-        LOGGER.info("Invoked init method, will initialize the executor");
+        LOGGER.info("Invoked initExecutor method, will initialize the executor");
         this.executor = executor;
+    }
+
+    /*
+    - Initializes Datasets
+     */
+    public Datasets initDatasets(Datasets datasets)
+    {
+        return enrichDatasetsAndGenerateOperations(datasets);
     }
 
     /*
     - Create Datasets
     */
-    public Datasets create(Datasets datasets)
+    public void create()
     {
         LOGGER.info("Invoked create method, will create the datasets");
-        init(datasets);
+        validateDatasetsInitialization();
         createAllDatasets();
         initializeLock();
-        return this.enrichedDatasets;
     }
 
     /*
     - Evolve Schema of Target table based on schema changes in staging table
     */
-    public Datasets evolve(Datasets datasets)
+    public SchemaEvolveResult evolve()
     {
         LOGGER.info("Invoked evolve method, will evolve the schema");
-        init(datasets);
-        evolveSchema();
-        return this.enrichedDatasets;
+        validateDatasetsInitialization();
+        List<String> schemaEvolutionSql = new ArrayList<>();
+        schemaEvolutionSql.addAll(evolveMetadataDatasetSchema());
+        schemaEvolutionSql.addAll(evolveMainDatasetSchema());
+        SchemaEvolveResult schemaEvolveResult = SchemaEvolveResult.builder().updatedDatasets(enrichedDatasets).addAllSchemaEvolutionSql(schemaEvolutionSql).build();
+        return schemaEvolveResult;
     }
 
     /*
     - Perform ingestion from staging to main dataset based on the Ingest mode, executes in current transaction
     */
-    public List<IngestorResult> ingest(Datasets datasets)
+    public List<IngestorResult> ingest()
     {
         LOGGER.info("Invoked ingest method, will perform the ingestion");
-        init(datasets);
+        validateDatasetsInitialization();
         dedupAndVersion();
         List<DataSplitRange> dataSplitRanges = ApiUtils.getDataSplitRanges(executor, planner, transformer, ingestMode());
         List<IngestorResult> result = ingest(dataSplitRanges);
@@ -260,12 +279,11 @@ public abstract class RelationalIngestorAbstract
     /*
     - Perform cleanup of temporary tables
     */
-    public Datasets cleanUp(Datasets datasets)
+    public void cleanUp()
     {
         LOGGER.info("Invoked cleanUp method, will delete the temporary resources");
-        init(datasets);
+        validateDatasetsInitialization();
         postCleanup();
-        return this.enrichedDatasets;
     }
 
     /*
@@ -324,14 +342,67 @@ public abstract class RelationalIngestorAbstract
 
     // ---------- UTILITY METHODS ----------
 
-    private void evolveSchema()
+    private void validateDatasetsInitialization()
     {
+        // Validation: init(Connection) must have been invoked
+        if (this.executor == null)
+        {
+            throw new IllegalStateException("Executor not initialized, call init(Connection) before invoking this method!");
+        }
+        // Validation: init(Datasets) must have been invoked
+        if (!this.datasetsInitialized)
+        {
+            throw new IllegalStateException("Datasets not initialized, call init(Datasets) before invoking this method!");
+        }
+    }
+
+    private List<String> evolveMainDatasetSchema()
+    {
+        List<String> schemaEvolutionSql = new ArrayList<>();
         if (mainDatasetExists && generatorResult.schemaEvolutionDataset().isPresent())
         {
             LOGGER.info("SchemaEvolution is enabled, evolving the schema");
             enrichedDatasets = enrichedDatasets.withMainDataset(generatorResult.schemaEvolutionDataset().get());
-            generatorResult.schemaEvolutionSqlPlan().ifPresent(executor::executePhysicalPlan);
+            Optional<SqlPlan> schemaEvolutionSqlPlan = generatorResult.schemaEvolutionSqlPlan();
+            if (schemaEvolutionSqlPlan.isPresent() && !schemaEvolutionSqlPlan.get().getSqlList().isEmpty())
+            {
+                executor.executePhysicalPlan(schemaEvolutionSqlPlan.get());
+                schemaEvolutionSql = schemaEvolutionSqlPlan.get().getSqlList();
+            }
         }
+        return schemaEvolutionSql;
+    }
+
+    private List<String> evolveMetadataDatasetSchema()
+    {
+        List<String> schemaEvolutionSql = new ArrayList<>();
+        if (enableSchemaEvolutionForMetadataDatasets())
+        {
+            LOGGER.info("SchemaEvolution for Metadata dataset is enabled, evolving the schema");
+            MetadataDataset metadataDataset = enrichedDatasets.metadataDataset().isPresent()
+                    ? enrichedDatasets.metadataDataset().get() : MetadataDataset.builder().build();
+
+            Dataset desiredMetadataDataset = metadataDataset.get();
+            Dataset existingMetadataDataset = null;
+
+            boolean metadataDatasetExists = executor.datasetExists(desiredMetadataDataset);
+            if (metadataDatasetExists)
+            {
+                existingMetadataDataset = executor.constructDatasetFromDatabase(desiredMetadataDataset);
+                Set<SchemaEvolutionCapability> schemaEvolutionCapabilitySet = new HashSet<>();
+                schemaEvolutionCapabilitySet.add(SchemaEvolutionCapability.ADD_COLUMN);
+                SchemaEvolution schemaEvolution = new SchemaEvolution(relationalSink(), this.ingestMode(), schemaEvolutionCapabilitySet);
+                SchemaEvolutionResult schemaEvolutionResult = schemaEvolution.buildLogicalPlanForSchemaEvolution(existingMetadataDataset, desiredMetadataDataset);
+                LogicalPlan schemaEvolutionLogicalPlan = schemaEvolutionResult.logicalPlan();
+                Optional<SqlPlan> schemaEvolutionSqlPlan = Optional.of(transformer.generatePhysicalPlan(schemaEvolutionLogicalPlan));
+                if (schemaEvolutionSqlPlan.isPresent() && !schemaEvolutionSqlPlan.get().getSqlList().isEmpty())
+                {
+                    executor.executePhysicalPlan(schemaEvolutionSqlPlan.get());
+                    schemaEvolutionSql = schemaEvolutionSqlPlan.get().getSqlList();
+                }
+            }
+        }
+        return schemaEvolutionSql;
     }
 
     private void createAllDatasets()
@@ -424,8 +495,8 @@ public abstract class RelationalIngestorAbstract
     private List<IngestorResult> performFullIngestion(RelationalConnection connection, Datasets datasets, List<DataSplitRange> dataSplitRanges)
     {
         // 1. init
-        init(connection);
-        init(datasets);
+        initExecutor(connection);
+        initDatasets(datasets);
 
         // 2. Create Datasets
         if (createDatasets())
@@ -435,7 +506,7 @@ public abstract class RelationalIngestorAbstract
         }
 
         // Evolve Schema
-        evolveSchema();
+        evolveMainDatasetSchema();
 
         // Dedup and Version
         dedupAndVersion();
@@ -470,7 +541,7 @@ public abstract class RelationalIngestorAbstract
     }
 
 
-    private void init(Datasets datasets)
+    private Datasets enrichDatasetsAndGenerateOperations(Datasets datasets)
     {
         LOGGER.info("Initializing Datasets");
         // Validation: init(Connection) must have been invoked
@@ -538,6 +609,8 @@ public abstract class RelationalIngestorAbstract
 
         planner = Planners.get(enrichedDatasets, enrichedIngestMode, plannerOptions(), relationalSink().capabilities());
         generatorResult = generator.generateOperations(enrichedDatasets, resourcesBuilder.build(), planner, enrichedIngestMode);
+        datasetsInitialized = true;
+        return enrichedDatasets;
     }
 
     private List<IngestorResult> performIngestion(Datasets datasets, Transformer<SqlGen, SqlPlan> transformer, Planner planner, Executor<SqlGen,
