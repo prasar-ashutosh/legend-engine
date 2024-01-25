@@ -28,7 +28,7 @@ import java.util.Optional;
         optionalAcceptNullable = true,
         strictBuilder = true
 )
-public abstract class SchemaEvolveResultAbstract
+public abstract class SchemaEvolutionResultAbstract
 {
     public abstract Datasets updatedDatasets();
 

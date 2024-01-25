@@ -36,7 +36,6 @@ import org.finos.legend.engine.persistence.components.relational.sql.TabularData
 import org.finos.legend.engine.persistence.components.relational.sqldom.SqlGen;
 import org.finos.legend.engine.persistence.components.relational.transformer.RelationalTransformer;
 import org.finos.legend.engine.persistence.components.schemaevolution.SchemaEvolution;
-import org.finos.legend.engine.persistence.components.schemaevolution.SchemaEvolutionResult;
 import org.finos.legend.engine.persistence.components.transformer.TransformOptions;
 import org.finos.legend.engine.persistence.components.transformer.Transformer;
 import org.finos.legend.engine.persistence.components.util.LogicalPlanUtils;
@@ -251,14 +250,14 @@ public abstract class RelationalIngestorAbstract
     /*
     - Evolve Schema of Target table based on schema changes in staging table
     */
-    public SchemaEvolveResult evolve()
+    public SchemaEvolutionResult evolve()
     {
         LOGGER.info("Invoked evolve method, will evolve the schema");
         validateDatasetsInitialization();
         List<String> schemaEvolutionSql = new ArrayList<>();
         schemaEvolutionSql.addAll(evolveMetadataDatasetSchema());
         schemaEvolutionSql.addAll(evolveMainDatasetSchema());
-        SchemaEvolveResult schemaEvolveResult = SchemaEvolveResult.builder().updatedDatasets(enrichedDatasets).addAllSchemaEvolutionSql(schemaEvolutionSql).build();
+        SchemaEvolutionResult schemaEvolveResult = SchemaEvolutionResult.builder().updatedDatasets(enrichedDatasets).addAllSchemaEvolutionSql(schemaEvolutionSql).build();
         return schemaEvolveResult;
     }
 
@@ -271,7 +270,8 @@ public abstract class RelationalIngestorAbstract
         validateDatasetsInitialization();
         dedupAndVersion();
         List<DataSplitRange> dataSplitRanges = ApiUtils.getDataSplitRanges(executor, planner, transformer, ingestMode());
-        List<IngestorResult> result = ingest(dataSplitRanges);
+        SchemaEvolutionResult schemaEvolutionResult = SchemaEvolutionResult.builder().updatedDatasets(enrichedDatasets).build();
+        List<IngestorResult> result = ingest(dataSplitRanges, schemaEvolutionResult);
         LOGGER.info("Ingestion completed");
         return result;
     }
@@ -344,15 +344,15 @@ public abstract class RelationalIngestorAbstract
 
     private void validateDatasetsInitialization()
     {
-        // Validation: init(Connection) must have been invoked
+        // Validation: initExecutor must have been invoked
         if (this.executor == null)
         {
-            throw new IllegalStateException("Executor not initialized, call init(Connection) before invoking this method!");
+            throw new IllegalStateException("Executor not initialized, call initExecutor before invoking this method!");
         }
-        // Validation: init(Datasets) must have been invoked
+        // Validation: initDatasets must have been invoked
         if (!this.datasetsInitialized)
         {
-            throw new IllegalStateException("Datasets not initialized, call init(Datasets) before invoking this method!");
+            throw new IllegalStateException("Datasets not initialized, call initDatasets before invoking this method!");
         }
     }
 
@@ -392,7 +392,7 @@ public abstract class RelationalIngestorAbstract
                 Set<SchemaEvolutionCapability> schemaEvolutionCapabilitySet = new HashSet<>();
                 schemaEvolutionCapabilitySet.add(SchemaEvolutionCapability.ADD_COLUMN);
                 SchemaEvolution schemaEvolution = new SchemaEvolution(relationalSink(), this.ingestMode(), schemaEvolutionCapabilitySet);
-                SchemaEvolutionResult schemaEvolutionResult = schemaEvolution.buildLogicalPlanForSchemaEvolution(existingMetadataDataset, desiredMetadataDataset);
+                org.finos.legend.engine.persistence.components.schemaevolution.SchemaEvolutionResult schemaEvolutionResult = schemaEvolution.buildLogicalPlanForSchemaEvolution(existingMetadataDataset, desiredMetadataDataset);
                 LogicalPlan schemaEvolutionLogicalPlan = schemaEvolutionResult.logicalPlan();
                 Optional<SqlPlan> schemaEvolutionSqlPlan = Optional.of(transformer.generatePhysicalPlan(schemaEvolutionLogicalPlan));
                 if (schemaEvolutionSqlPlan.isPresent() && !schemaEvolutionSqlPlan.get().getSqlList().isEmpty())
@@ -478,17 +478,17 @@ public abstract class RelationalIngestorAbstract
         }
     }
 
-    private List<IngestorResult> ingest(List<DataSplitRange> dataSplitRanges)
+    private List<IngestorResult> ingest(List<DataSplitRange> dataSplitRanges, SchemaEvolutionResult schemaEvolutionResult)
     {
         if (enrichedIngestMode instanceof BulkLoad)
         {
             LOGGER.info("Starting Bulk Load");
-            return performBulkLoad(enrichedDatasets, transformer, planner, executor, generatorResult, enrichedIngestMode);
+            return performBulkLoad(enrichedDatasets, transformer, planner, executor, generatorResult, enrichedIngestMode, schemaEvolutionResult);
         }
         else
         {
             LOGGER.info(String.format("Starting Ingestion with IngestMode: {%s}", enrichedIngestMode.getClass().getSimpleName()));
-            return performIngestion(enrichedDatasets, transformer, planner, executor, generatorResult, dataSplitRanges, enrichedIngestMode);
+            return performIngestion(enrichedDatasets, transformer, planner, executor, generatorResult, dataSplitRanges, enrichedIngestMode, schemaEvolutionResult);
         }
     }
 
@@ -506,7 +506,7 @@ public abstract class RelationalIngestorAbstract
         }
 
         // Evolve Schema
-        evolveMainDatasetSchema();
+        SchemaEvolutionResult schemaEvolutionResult = evolve();
 
         // Dedup and Version
         dedupAndVersion();
@@ -521,7 +521,7 @@ public abstract class RelationalIngestorAbstract
         try
         {
             executor.begin();
-            result = ingest(dataSplitRanges);
+            result = ingest(dataSplitRanges, schemaEvolutionResult);
             executor.commit();
         }
         catch (Exception e)
@@ -614,7 +614,7 @@ public abstract class RelationalIngestorAbstract
     }
 
     private List<IngestorResult> performIngestion(Datasets datasets, Transformer<SqlGen, SqlPlan> transformer, Planner planner, Executor<SqlGen,
-        TabularData, SqlPlan> executor, GeneratorResult generatorResult, List<DataSplitRange> dataSplitRanges, IngestMode ingestMode)
+        TabularData, SqlPlan> executor, GeneratorResult generatorResult, List<DataSplitRange> dataSplitRanges, IngestMode ingestMode, SchemaEvolutionResult schemaEvolutionResult)
     {
          List<IngestorResult> results = new ArrayList<>();
          int dataSplitIndex = 0;
@@ -632,7 +632,7 @@ public abstract class RelationalIngestorAbstract
                  .updatedDatasets(datasets)
                  .batchId(Optional.ofNullable(placeHolderKeyValues.containsKey(BATCH_ID_PATTERN) ? Integer.valueOf(placeHolderKeyValues.get(BATCH_ID_PATTERN)) : null))
                  .dataSplitRange(dataSplitRange)
-                 .schemaEvolutionSql(generatorResult.schemaEvolutionSql())
+                 .schemaEvolutionSql(schemaEvolutionResult.schemaEvolutionSql())
                  .status(IngestStatus.SUCCEEDED)
                  .ingestionTimestampUTC(placeHolderKeyValues.get(BATCH_START_TS_PATTERN))
                  .build();
@@ -663,13 +663,19 @@ public abstract class RelationalIngestorAbstract
     }
 
 
-    private List<IngestorResult> performBulkLoad(Datasets datasets, Transformer<SqlGen, SqlPlan> transformer, Planner planner, Executor<SqlGen, TabularData, SqlPlan> executor, GeneratorResult generatorResult, IngestMode ingestMode)
+    private List<IngestorResult> performBulkLoad(Datasets datasets, Transformer<SqlGen, SqlPlan> transformer, Planner planner,
+                                                 Executor<SqlGen, TabularData, SqlPlan> executor, GeneratorResult generatorResult,
+                                                 IngestMode ingestMode, SchemaEvolutionResult schemaEvolutionResult)
     {
         List<IngestorResult> results = new ArrayList<>();
         Map<String, String> placeHolderKeyValues = extractPlaceHolderKeyValues(datasets, executor, planner, transformer, ingestMode, Optional.empty());
 
         // Execute ingest SqlPlan
         IngestorResult result = relationalSink().performBulkLoad(datasets, executor, generatorResult.ingestSqlPlan(), generatorResult.postIngestStatisticsSqlPlan(), placeHolderKeyValues);
+        if (schemaEvolutionResult != null && !schemaEvolutionResult.schemaEvolutionSql().isEmpty())
+        {
+            result = result.withSchemaEvolutionSql(schemaEvolutionResult.schemaEvolutionSql());
+        }
         // Execute metadata ingest SqlPlan
         // add batchEndTimestamp
         placeHolderKeyValues.put(BATCH_END_TS_PATTERN, LocalDateTime.now(executionTimestampClock()).format(DATE_TIME_FORMATTER));
