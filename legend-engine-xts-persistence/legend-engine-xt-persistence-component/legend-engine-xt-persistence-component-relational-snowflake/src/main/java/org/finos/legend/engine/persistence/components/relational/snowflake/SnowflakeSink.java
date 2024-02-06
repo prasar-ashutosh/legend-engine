@@ -110,6 +110,16 @@ public class SnowflakeSink extends AnsiSqlSink
     private static final String FIRST_ERROR = "first_error";
     private static final String FIRST_ERROR_COLUMN_NAME = "first_error_column_name";
 
+    private static final String ERROR = "ERROR";
+    private static final String FILE_WITH_ERROR = "FILE";
+    private static final String LINE = "LINE";
+    private static final String CHARACTER = "CHARACTER";
+    private static final String BYTE_OFFSET = "BYTE_OFFSET";
+    private static final String CATEGORY = "CATEGORY";
+    private static final String COLUMN_NAME = "COLUMN_NAME";
+    private static final String ROW_NUMBER = "ROW_NUMBER";
+    private static final String ROW_START_LINE = "ROW_START_LINE";
+
     static
     {
         Set<Capability> capabilities = new HashSet<>();
@@ -118,6 +128,7 @@ public class SnowflakeSink extends AnsiSqlSink
         capabilities.add(Capability.IMPLICIT_DATA_TYPE_CONVERSION);
         capabilities.add(Capability.DATA_TYPE_LENGTH_CHANGE);
         capabilities.add(Capability.TRANSFORM_WHILE_COPY);
+        capabilities.add(Capability.DRY_RUN);
         CAPABILITIES = Collections.unmodifiableSet(capabilities);
 
         Map<Class<?>, LogicalPlanVisitor<?>> logicalPlanVisitorByClass = new HashMap<>();
@@ -229,6 +240,24 @@ public class SnowflakeSink extends AnsiSqlSink
                 return Optional.empty();
             default:
                 throw new IllegalArgumentException("Unrecognized case conversion: " + caseConversion);
+        }
+    }
+
+    public void performDryRun(Executor<SqlGen, TabularData, SqlPlan> executor, SqlPlan dryRunSqlPlan)
+    {
+        List<TabularData> results = executor.executePhysicalPlanAndGetResults(dryRunSqlPlan, 25);
+        List<Map<String, Object>> resultSets = results.get(0).getData();
+        for (Map<String, Object> row: resultSets)
+        {
+            Object error = row.get(ERROR);
+            Object file = row.get(FILE_WITH_ERROR);
+            Object line = row.get(LINE);
+            Object character = row.get(CHARACTER);
+            Object byteOffset = row.get(BYTE_OFFSET);
+            Object category = row.get(CATEGORY);
+            Object columnName = row.get(COLUMN_NAME);
+            Object rowNumber = row.get(ROW_NUMBER);
+            Object rowStartLine = row.get(ROW_START_LINE);
         }
     }
 

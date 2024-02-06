@@ -72,6 +72,21 @@ public class RelationalExecutor implements Executor<SqlGen, TabularData, SqlPlan
     }
 
     @Override
+    public List<TabularData> executePhysicalPlanAndGetResults(SqlPlan physicalPlan, int rows)
+    {
+        List<TabularData> resultSetList = new ArrayList<>();
+        for (String sql : physicalPlan.getSqlList())
+        {
+            List<Map<String, Object>> queryResult = relationalExecutionHelper.executeQuery(sql, rows);
+            if (!queryResult.isEmpty())
+            {
+                resultSetList.add(new TabularData(queryResult));
+            }
+        }
+        return resultSetList;
+    }
+
+    @Override
     public List<TabularData> executePhysicalPlanAndGetResults(SqlPlan physicalPlan, Map<String, String> placeholderKeyValues)
     {
         List<TabularData> resultSetList = new ArrayList<>();
