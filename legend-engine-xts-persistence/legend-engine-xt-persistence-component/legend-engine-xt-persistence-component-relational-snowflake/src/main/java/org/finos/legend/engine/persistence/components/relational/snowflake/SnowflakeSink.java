@@ -119,6 +119,7 @@ public class SnowflakeSink extends AnsiSqlSink
     private static final String COLUMN_NAME = "COLUMN_NAME";
     private static final String ROW_NUMBER = "ROW_NUMBER";
     private static final String ROW_START_LINE = "ROW_START_LINE";
+    private static final String REJECTED_RECORD = "REJECTED_RECORD";
 
     static
     {
@@ -258,6 +259,7 @@ public class SnowflakeSink extends AnsiSqlSink
             Object columnName = row.get(COLUMN_NAME);
             Object rowNumber = row.get(ROW_NUMBER);
             Object rowStartLine = row.get(ROW_START_LINE);
+            Object rejectedRecord = row.get(REJECTED_RECORD);
         }
     }
 

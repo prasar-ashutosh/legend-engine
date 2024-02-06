@@ -17,6 +17,7 @@ package org.finos.legend.engine.persistence.components.relational.api;
 import org.immutables.value.Value;
 
 import java.util.List;
+import java.util.Map;
 
 @Value.Immutable
 @Value.Style(
@@ -30,34 +31,5 @@ public abstract class DryRunResultAbstract
 {
     public abstract IngestStatus status();
 
-    public abstract List<DryRunError> errors();
-
-    @Value.Immutable
-    @Value.Style(
-            typeAbstract = "*Abstract",
-            typeImmutable = "*",
-            jdkOnly = true,
-            optionalAcceptNullable = true,
-            strictBuilder = true
-    )
-    public interface DryRunErrorAbstract
-    {
-        String file();
-
-        String error();
-
-        int line();
-
-        int character();
-
-        long byteOffset();
-
-        String category();
-
-        String columnName();
-
-        int rowNumber();
-
-        int rowStartLine();
-    }
+    public abstract List<Map<String, Object>> errorRecords();
 }
