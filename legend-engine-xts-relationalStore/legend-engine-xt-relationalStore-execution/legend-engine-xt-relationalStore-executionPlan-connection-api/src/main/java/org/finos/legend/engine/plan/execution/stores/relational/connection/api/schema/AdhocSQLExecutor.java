@@ -14,7 +14,6 @@
 
 package org.finos.legend.engine.plan.execution.stores.relational.connection.api.schema;
 
-import com.opencsv.CSVWriter;
 import org.eclipse.collections.api.list.MutableList;
 import org.finos.legend.engine.plan.execution.stores.relational.connection.manager.ConnectionManagerSelector;
 import org.finos.legend.engine.protocol.pure.v1.model.packageableElement.store.relational.connection.RelationalDatabaseConnection;
@@ -39,8 +38,8 @@ public class AdhocSQLExecutor
             stmt.setMaxRows(PREVIEW_LIMIT);
             ResultSet resultSet = stmt.executeQuery(sqlQuery);
             StringWriter stringWriter = new StringWriter();
-            CSVWriter csvWriter = new CSVWriter(stringWriter);
-            csvWriter.writeAll(resultSet, true, true, false);
+            BasicCsvStringWriter csvWriter = new BasicCsvStringWriter(stringWriter);
+            csvWriter.writeResultSet(resultSet, true, true);
             return stringWriter.toString();
         }
     }
